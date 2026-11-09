@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+. /usr/lib/naos/storage.sh
+[ -r /run/naos/boot-device ] && [ -r /run/naos/slot ] || {
+    echo "NAOS: boot-device/slot metadata from initramfs is missing" >&2
+    exit 1
+}
+IFS= read -r disk </run/naos/boot-device
+IFS= read -r slot </run/naos/slot
+case "$disk" in /dev/*) ;; *) exit 1 ;; esac
+case "$slot" in A) system_label=system_a ;; B) system_label=system_b ;; *) exit 1 ;; esac
+cmd_slot=
+cmd_rauc_slot=
+slot_seen=0
+rauc_slot_seen=0
+set -f
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        naos.slot=*) [ "$slot_seen" -eq 0 ]; slot_seen=1; cmd_slot=${arg#naos.slot=} ;;
+        rauc.slot=*) [ "$rauc_slot_seen" -eq 0 ]; rauc_slot_seen=1; cmd_rauc_slot=${arg#rauc.slot=} ;;
+    esac
+done
+set +f
+[ "$slot" = "$cmd_slot" ] && [ "$slot" = "$cmd_rauc_slot" ]
+naos_bind_disk_parts "$disk"
+IFS= read -r system </run/naos/system-device
+[ "$(readlink -f "/dev/naos/$system_label")" = "$system" ]
+lower_source=$(awk '$2 == "/run/naos/lower" && $3 == "squashfs" { print $1 }' /proc/mounts)
+[ -n "$lower_source" ] && [ "$(readlink -f "$lower_source")" = "$system" ]
+for data_mount in /run/naos/data /userdata; do
+    userdata_source=$(awk -v point="$data_mount" '$5 == point && $4 == "/" && $6 ~ /(^|,)rw(,|$)/ {
+        for (i = 6; i <= NF; i++)
+            if ($i == "-" && $(i + 1) == "f2fs") print $(i + 2)
+    }' /proc/self/mountinfo)
+    [ -n "$userdata_source" ] && \
+        [ "$(readlink -f "$userdata_source")" = "$(readlink -f /dev/naos/userdata)" ]
+done

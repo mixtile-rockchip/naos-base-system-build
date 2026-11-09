@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MIT
+/* Log output remains on the existing UART2 pins; no serial login is started. */
+&fiq_debugger {
+    status = "disabled";
+};
+
+&uart2 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&uart2m0_xfer>;
+    status = "okay";
+};
+
+&chosen {
+    stdout-path = "serial2:1500000n8";
+    bootargs = "earlycon=uart8250,mmio32,0xfeb50000 console=ttyS2,1500000n8 irqchip.gicv3_pseudo_nmi=0 panic=3 rcupdate.rcu_expedited=1 rcu_nocbs=all";
+};

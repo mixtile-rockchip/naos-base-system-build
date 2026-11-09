@@ -1,0 +1,25 @@
+From: NAOS maintainers
+Subject: [PATCH] Pass Yocto compiler commands to vendor make
+
+The top-level Makefile assigns CC, HOSTCC and HOSTCXX itself. Pass the
+caller's compiler commands explicitly so Yocto's target and native sysroot
+flags survive. The target sysroot is also needed by -print-libgcc-file-name
+to locate the static compiler runtime. Recursive Kbuild invocations inherit
+the command-line assignments.
+
+Upstream-Status: Inappropriate [NAOS build integration]
+---
+diff --git a/make.sh b/make.sh
+--- a/make.sh
++++ b/make.sh
+@@ -838,6 +838,9 @@ sub_commands
+ clean_files
+ # ./arch/arm/mach-rockchip/make_fit_atf.sh -t 0x8400000 > u-boot.its
+-make ${ARG_SPL_FWVER} ${ARG_FWVER} CROSS_COMPILE=${TOOLCHAIN} all --jobs=${JOB}
++make ${ARG_SPL_FWVER} ${ARG_FWVER} CROSS_COMPILE=${TOOLCHAIN} \
++    CC="${CC:-${TOOLCHAIN}gcc}" \
++    HOSTCC="${HOSTCC:-cc}" HOSTCXX="${HOSTCXX:-c++}" \
++    all --jobs=${JOB}
+ pack_images
+ finish
+ echo ${TOOLCHAIN}

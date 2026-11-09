@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+description="RAUC signed A/B system update service"
+command="/usr/bin/rauc"
+command_args="service"
+supervisor=supervise-daemon
+respawn_delay=2
+respawn_max=5
+respawn_period=60
+output_logger="logger -t rauc -p daemon.info"
+error_logger="logger -t rauc -p daemon.err"
+
+depend() {
+    need localmount dbus
+    after bootmisc syslog
+    use logger
+}
+
+start_pre() {
+    /usr/lib/naos/prepare-slots || return 1
+    [ -s /etc/rauc/keyring.pem ] || { eerror "RAUC trust certificate is missing"; return 1; }
+    checkpath -d -m 0700 /var/lib/rauc
+    checkpath -d -m 0755 /run/rauc
+}

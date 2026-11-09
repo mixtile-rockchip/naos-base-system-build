@@ -1,0 +1,76 @@
+From: NAOS maintainers
+Subject: [PATCH] Assemble sector-encrypted SquashFS and HUK factory import
+
+Upstream-Status: Inappropriate [NAOS security-layer system image]
+
+--- a/assemble-naos-image.py
++++ b/assemble-naos-image.py
+@@ -22,6 +22,9 @@
+ import tempfile
+ import uuid
+ import zlib
++
++from system_encryption import (encrypted_layout, finish_system, load_build_config,
++                               private_workdir, write_factory_import)
+ 
+ MIB = 1024 * 1024
+ SECTOR = 512
+@@ -287,32 +290,36 @@
+         parser.add_argument("--" + name, type=Path)
+     args = parser.parse_args()
+     args.overlay.append(Path(__file__).parent / "userdata-rootfs")
++    args.overlay.append(Path(__file__).parent / "system-rootfs")
+     if args.secure_boot:
+         for name in ("fit_builder", "fit_key_dir", "fit_check_sign", "fit_key_dtb"):
+             if getattr(args, name) is None:
+                 parser.error("secure boot requires --" + name.replace("_", "-"))
+     elif any(getattr(args, name) is not None for name in ("fit_builder", "fit_key_dir", "fit_check_sign", "fit_key_dtb")):
+         parser.error("FIT signing inputs require --secure-boot")
+-    layout = read_layout(args.layout)
++    layout = encrypted_layout(read_layout(args.layout))
++    material = load_build_config(Path(__file__).parent / "system-encryption-build.json")
+     output = args.output_dir.resolve()
+     if output == args.input_dir.resolve():
+         parser.error("input and output directories must differ")
+     output.mkdir(parents=True, exist_ok=True)
+     version = {"machine": args.machine, "version": args.version, "build_id": args.build_id,
+                "layout_compatible": layout["compatible"], "secure_boot": args.secure_boot,
+-               "system_encryption": False, "data_encryption": True}
+-    system_tar = output / "system.tar.gz"
++               "system_encryption": True, "data_encryption": True}
++    private = private_workdir(output)
++    system_tar = private / "system.tar.gz"
++    plain_system = private / "system.squashfs"
+     assemble_rootfs(args.input_dir / args.rootfs, args.input_dir / args.modules,
+                     args.overlay, args.keyring, system_tar, version, args.epoch)
+     if args.sbom_inventory:
+         from naos_sbom_inventory import write_inventory
+         inventory_manifest = (args.input_dir / args.rootfs.removesuffix(".tar.gz")).with_suffix(".manifest.json")
+         write_inventory(system_tar, output / "naos-rootfs.inventory.json", inventory_manifest)
+     with gzip.open(system_tar, "rb") as archive, tempfile.TemporaryFile() as diagnostics:
+         process = subprocess.Popen([args.sqfstar, "-comp", "zstd", "-processors", str(args.processors),
+                         "-mkfs-time", str(args.epoch), "-all-time", str(args.epoch),
+                         "-root-uid", "0", "-root-gid", "0", "-root-mode", "0755",
+-                        "-no-progress", "-exit-on-error", str(output / "system.squashfs")],
++                        "-no-progress", "-exit-on-error", str(plain_system)],
+                        stdin=subprocess.PIPE, stderr=diagnostics,
+                        env={key: value for key, value in os.environ.items() if key != "SOURCE_DATE_EPOCH"})
+         try:
+@@ -321,6 +328,7 @@
+             raise RuntimeError(f"sqfstar failed with exit status {status}: {errors}")
+         if errors:
+             print(errors, end="")
++    finish_system(plain_system, output, material)
+     make_fit(args, layout, output)
+     for name in ("idblock.bin", "uboot.img", "naos-uboot-env.bin", "MiniLoaderAll.bin"):
+         shutil.copyfile(args.input_dir / name, output / name)
+@@ -347,7 +355,8 @@
+                 raise ValueError("Environment copies overlap or exceed the misc partition")
+             copy_payload(disk, env_image, start + relative, environment["size"])
+             last_end = relative + environment["size"]
+-    shutil.copyfile(args.layout, output / "partition-layout.json")
++        write_factory_import(disk, layout, offsets, material)
++    (output / "partition-layout.json").write_text(json.dumps(layout, sort_keys=True, indent=2) + "\n")
+     package_manifest = args.input_dir / args.rootfs.removesuffix(".tar.gz")
+     package_manifest = package_manifest.with_suffix(".manifest.json")
+     if package_manifest.is_file():

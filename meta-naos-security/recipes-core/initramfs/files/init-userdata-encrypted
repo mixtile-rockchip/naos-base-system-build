@@ -1,0 +1,317 @@
+#!/bin/sh
+# Initialize userdata only when its entire original partition is proven zero.
+set -eu
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export LC_ALL=C
+
+OVERLAY_RESERVE=/data/.overlay-reserve
+OVERLAY_RESERVE_MAX_BYTES=134217728
+OVERLAY_RESERVE_STEP_BYTES=8388608
+OVERLAY_BOOT_FREE_KIB=8192
+OVERLAY_REFILL_FREE_KIB=16384
+OVERLAY_RESERVE_RELEASED=0
+
+overlay_free_kib() {
+    overlay_space=$(df -Pk /data) || return 1
+    overlay_space=$(printf '%s\n' "$overlay_space" | awk 'NR == 2 { print $4 }')
+    case "$overlay_space" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s\n' "$overlay_space"
+}
+
+overlay_reserve_size() {
+    [ ! -L "$OVERLAY_RESERVE" ] || return 1
+    [ ! -e "$OVERLAY_RESERVE" ] || [ -f "$OVERLAY_RESERVE" ] || return 1
+    if [ ! -e "$OVERLAY_RESERVE" ]; then
+        printf '0\n'
+        return 0
+    fi
+    overlay_size=$(stat -c %s "$OVERLAY_RESERVE") || return 1
+    case "$overlay_size" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$overlay_size" -le "$OVERLAY_RESERVE_MAX_BYTES" ] || return 1
+    printf '%s\n' "$overlay_size"
+}
+
+release_overlay_reserve() {
+    overlay_old_size=$(overlay_reserve_size) || return 1
+    [ "$overlay_old_size" -gt 0 ] || return 1
+    overlay_new_size=$((overlay_old_size - OVERLAY_RESERVE_STEP_BYTES))
+    [ "$overlay_new_size" -ge 0 ] || overlay_new_size=0
+    truncate -s "$overlay_new_size" "$OVERLAY_RESERVE" || return 1
+    OVERLAY_RESERVE_RELEASED=1
+    sync
+    [ "$(overlay_reserve_size)" -eq "$overlay_new_size" ] || return 1
+    printf 'NAOS: overlay reserve reduced from %s to %s bytes\n' "$overlay_old_size" "$overlay_new_size"
+}
+
+rollback_overlay_reserve() {
+    truncate -s "$1" "$OVERLAY_RESERVE" || return 1
+    OVERLAY_RESERVE_RELEASED=1
+    sync
+    [ "$(overlay_reserve_size)" -eq "$1" ]
+}
+
+ensure_overlay_reserve() {
+    [ "$OVERLAY_RESERVE_RELEASED" -eq 0 ] || return 0
+    overlay_original_size=$(overlay_reserve_size) || return 2
+    if [ -f "$OVERLAY_RESERVE" ]; then
+        chmod 0600 "$OVERLAY_RESERVE" || return 2
+        overlay_blocks=$(stat -c %b "$OVERLAY_RESERVE") || return 2
+        [ "$overlay_blocks" -ge "$(((overlay_original_size + 511) / 512))" ] || return 2
+    fi
+    [ "$overlay_original_size" -lt "$OVERLAY_RESERVE_MAX_BYTES" ] || return 0
+    overlay_available=$(overlay_free_kib) || return 2
+    [ "$overlay_available" -gt "$OVERLAY_REFILL_FREE_KIB" ] || return 1
+    overlay_growth=$(((overlay_available - OVERLAY_REFILL_FREE_KIB) / (OVERLAY_RESERVE_STEP_BYTES / 1024) * OVERLAY_RESERVE_STEP_BYTES))
+    [ "$overlay_growth" -gt 0 ] || return 1
+    overlay_target=$((overlay_original_size + overlay_growth))
+    [ "$overlay_target" -le "$OVERLAY_RESERVE_MAX_BYTES" ] || overlay_target=$OVERLAY_RESERVE_MAX_BYTES
+    # fallocate grows/reserves extents; it never shrinks an existing file.
+    # Roll back a partial allocation before continuing without a full reserve.
+    if ! (umask 077; fallocate -l "$overlay_target" "$OVERLAY_RESERVE"); then
+        rollback_overlay_reserve "$overlay_original_size" || return 2
+        return 1
+    fi
+    sync
+    overlay_blocks=$(stat -c %b "$OVERLAY_RESERVE") || return 2
+    overlay_actual_size=$(overlay_reserve_size) || return 2
+    if [ "$overlay_actual_size" -ne "$overlay_target" ] ||
+       [ "$overlay_blocks" -lt "$(((overlay_target + 511) / 512))" ]; then
+        rollback_overlay_reserve "$overlay_original_size" || return 2
+        return 1
+    fi
+    overlay_available=$(overlay_free_kib) || return 2
+    # Metadata can consume more than the requested extent length. Retain the
+    # refill headroom based on measured free space, not just file-size maths.
+    while [ "$overlay_available" -lt "$OVERLAY_REFILL_FREE_KIB" ]; do
+        release_overlay_reserve || return 2
+        overlay_available=$(overlay_free_kib) || return 2
+    done
+    printf 'NAOS: overlay reserve is %s bytes\n' "$(overlay_reserve_size)"
+}
+
+mount_userdata_overlay() {
+    mkdir -p /data/overlay/upper /data/overlay/work &&
+        mount -t overlay overlay -o lowerdir=/lower,upperdir=/data/overlay/upper,workdir=/data/overlay/work /newroot
+}
+
+debug_shell() {
+    NAOS_DEBUG_SLOT="${slot:-unknown}" \
+    NAOS_DEBUG_SYSTEM="${system:-unknown}" \
+    NAOS_DEBUG_DISK="${disk:-unknown}" \
+    NAOS_DEBUG_USERDATA="${userdata:-unknown}" \
+    NAOS_DEBUG_PROBE_STATUS="${probe_result:-unknown}" \
+    NAOS_DEBUG_PROBE_TYPE="${userdata_type:-}" \
+        /usr/lib/naos/initramfs-debug "$@"
+}
+
+fatal() {
+    trap - EXIT
+    printf '\nNAOS initramfs: %s\n' "$*" >&2
+    if command -v naos_system_crypto_cleanup >/dev/null 2>&1; then
+        naos_system_crypto_cleanup || true
+    fi
+    sync
+    if [ -x /usr/lib/naos/initramfs-debug ]; then
+        # Keep PID 1 alive. Exiting a failed-boot shell never resumes storage
+        # changes or falls through to the normal reboot policy.
+        while :; do
+            debug_shell fatal "$*" || true
+            sleep 1
+        done
+    fi
+    sleep 10
+    reboot -f || true
+    while :; do sleep 60; done
+}
+trap 'fatal "early boot failed (line ${LINENO:-unknown})"' EXIT
+
+mkdir -p /dev /proc /sys /run /tmp /lower /data /newroot
+mount -t devtmpfs devtmpfs /dev
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
+mdev -s
+
+. /usr/lib/naos/storage.sh
+. /usr/lib/naos/recovery.sh
+
+slot=
+rauc_slot=
+system_selector=
+slot_seen=0
+rauc_slot_seen=0
+system_seen=0
+debug_requested=0
+set -f
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in
+        naos.slot=*) [ "$slot_seen" -eq 0 ] || fatal "duplicate naos.slot"; slot_seen=1; slot=${arg#naos.slot=} ;;
+        rauc.slot=*) [ "$rauc_slot_seen" -eq 0 ] || fatal "duplicate rauc.slot"; rauc_slot_seen=1; rauc_slot=${arg#rauc.slot=} ;;
+        naos.system=*) [ "$system_seen" -eq 0 ] || fatal "duplicate naos.system"; system_seen=1; system_selector=${arg#naos.system=} ;;
+        naos.debug=1) debug_requested=1 ;;
+    esac
+done
+set +f
+case "$slot" in A) system_label=system_a ;; B) system_label=system_b ;; *) fatal "missing or invalid naos.slot" ;; esac
+[ "$slot" = "$rauc_slot" ] || fatal "naos.slot and rauc.slot disagree"
+case "$system_selector" in PARTUUID=?*) system_uuid=${system_selector#PARTUUID=} ;; *) fatal "naos.system must select a PARTUUID" ;; esac
+case "$system_uuid" in *[!a-fA-F0-9-]*|'') fatal "invalid system PARTUUID" ;; esac
+
+# Probe the exact partition selected by U-Boot, rather than whichever matching
+# GPT label happens to appear first (eMMC, SD and USB may coexist).
+attempt=0
+system=
+while [ "$attempt" -lt 30 ]; do
+    matches=$(blkid -t "PARTUUID=$system_uuid" -o device 2>/dev/null || true)
+    set -f
+    set -- $matches
+    set +f
+    [ "$#" -le 1 ] || fatal "system PARTUUID is present on multiple devices"
+    if [ "$#" -eq 1 ] && [ -b "$1" ]; then
+        system=$(readlink -f "$1")
+        break
+    fi
+    sleep 1
+    mdev -s
+    attempt=$((attempt + 1))
+done
+[ -n "$system" ] || fatal "selected system partition did not appear"
+[ "$(naos_partlabel "$system")" = "$system_label" ] || fatal "system PARTUUID does not match the selected slot"
+disk=$(naos_parent_disk "$system") || fatal "cannot identify the boot disk"
+naos_bind_disk_parts "$disk" || fatal "boot disk has an incomplete or unsafe NAOS layout"
+[ "$(readlink -f "/dev/naos/$system_label")" = "$system" ] || fatal "selected system does not belong to the boot disk"
+
+system_mount=$system
+system_encryption=0
+if [ -e /usr/lib/naos/system-encryption ] || [ -L /usr/lib/naos/system-encryption ]; then
+    [ -f /usr/lib/naos/system-encryption ] && [ ! -L /usr/lib/naos/system-encryption ] ||
+        fatal "invalid system encryption feature file"
+    [ "$(cat /usr/lib/naos/system-encryption)" = 1 ] || fatal "invalid system encryption feature value"
+    [ -r /usr/lib/naos/system-crypto.sh ] || fatal "system encryption implementation is missing"
+    . /usr/lib/naos/system-crypto.sh
+    system_encryption=1
+    naos_prepare_encrypted_system "$system" "$disk"
+fi
+mount -t squashfs -o ro "$system_mount" /lower
+[ -x /lower/sbin/init ] || fatal "selected system has no init"
+if [ "$system_encryption" -eq 1 ]; then
+    naos_system_crypto_commit
+fi
+
+userdata=$(readlink -f /dev/naos/userdata)
+naos_require_last_partition "$disk" "$userdata" || fatal "userdata is not the final non-overlapping partition"
+partno=$(cat "/sys/class/block/${userdata##*/}/partition")
+if [ "$debug_requested" -eq 1 ] && [ -x /usr/lib/naos/initramfs-debug ]; then
+    debug_shell break "requested before userdata probe and initialization" || true
+fi
+userdata_encryption=0
+if [ -e /usr/lib/naos/userdata-encryption ] || [ -L /usr/lib/naos/userdata-encryption ]; then
+    [ -f /usr/lib/naos/userdata-encryption ] && [ ! -L /usr/lib/naos/userdata-encryption ] ||
+        fatal "invalid userdata encryption feature file"
+    [ "$(cat /usr/lib/naos/userdata-encryption)" = 1 ] || fatal "invalid userdata encryption feature value"
+    [ -r /usr/lib/naos/userdata-crypto.sh ] || fatal "userdata encryption implementation is missing"
+    . /usr/lib/naos/userdata-crypto.sh
+    userdata_encryption=1
+    naos_prepare_encrypted_userdata "$userdata" "$disk" "$partno"
+else
+format_needed=0
+if userdata_type=$(blkid -p -D -s TYPE -o value "$userdata" 2>/dev/null); then
+    probe_result=0
+    [ -n "$userdata_type" ] || fatal "userdata $userdata probe returned no filesystem type (status=0); refusing to format"
+    [ "$userdata_type" = f2fs ] || fatal "userdata $userdata contains filesystem '$userdata_type' (expected f2fs); refusing to format"
+else
+    probe_result=$?
+    [ "$probe_result" -eq 2 ] && [ -z "$userdata_type" ] || fatal "userdata filesystem probe failed or is ambiguous"
+    userdata_sectors=$(cat "/sys/class/block/${userdata##*/}/size")
+    userdata_bytes=$((userdata_sectors * 512))
+    [ "$userdata_bytes" -gt 0 ] || fatal "userdata partition is empty"
+    # Do not sample only headers: raw data near the end must also prevent
+    # formatting. GNU cmp comes from diffutils, with explicit byte-count support.
+    cmp -n "$userdata_bytes" "$userdata" /dev/zero >/dev/null || fatal "userdata is not entirely zero or could not be read; refusing to format"
+    format_needed=1
+fi
+
+# Initialize only a new factory userdata partition.
+if [ "$format_needed" -eq 1 ]; then
+    # growpart preserves partition identity/start. It returns 1 for NOCHANGE,
+    # and 2 for errors. Only the proven-zero placeholder enters this branch.
+    if growpart --update=force "$disk" "$partno" >/run/naos-growpart.log 2>&1; then
+        cat /run/naos-growpart.log
+    else
+        result=$?
+        if [ "$result" -ne 1 ] || ! grep -q '^NOCHANGE:' /run/naos-growpart.log; then
+            cat /run/naos-growpart.log
+            fatal "userdata partition growth failed"
+        fi
+    fi
+    # Confirm the kernel sees the expanded GPT before creating the filesystem.
+    table_sectors=$(partx --raw --noheadings --output SECTORS --nr "$partno" "$disk") || fatal "cannot read grown userdata partition size"
+    case "$table_sectors" in ''|*[!0-9]*) fatal "invalid userdata partition size" ;; esac
+    userdata_sectors=$(cat "/sys/class/block/${userdata##*/}/size")
+    [ "$userdata_sectors" -eq "$table_sectors" ] || fatal "kernel userdata capacity has not caught up with GPT"
+    # The 32 MiB placeholder cannot hold the baseline F2FS layout.
+    [ "$((userdata_sectors * 512))" -ge 67108864 ] || fatal "userdata must grow to at least 64 MiB before F2FS creation"
+    # Only the all-zero pre-growth placeholder authorized this creation. Grow
+    # first, then initialize the newly allocated userdata space, without force
+    # or discard. A later boot never reformats unrecognized nonzero content.
+    mkfs.f2fs -t 0 -l userdata "$userdata" </dev/null || fatal "initial userdata F2FS creation failed"
+    sync
+    [ "$(blkid -p -D -s TYPE -o value "$userdata" 2>/dev/null)" = f2fs ] || fatal "new userdata filesystem was not recognized"
+fi
+fi
+# Existing F2FS is already initialized. A normal mount performs kernel log
+# recovery; do not run offline fsck/resize on every boot or rewrite its layout.
+mount -t f2fs -o rw,noatime "$userdata" /data
+if [ "$userdata_encryption" -eq 1 ]; then
+    naos_userdata_crypto_ready
+fi
+# Consume recovery after the ordinary userdata mount, before creating any
+# persistent overlay directories or reserve file.
+misc=$(readlink -f /dev/naos/misc) || fatal "cannot identify misc"
+naos_recovery_apply "$misc" "$userdata" /data || fatal "userdata recovery failed; request retained if not completed"
+# Keep the reserve for later boots; never refill during a boot that released it.
+overlay_current_size=$(overlay_reserve_size) || fatal "invalid overlay reserve file"
+if [ "$overlay_current_size" -gt 0 ]; then
+    overlay_blocks=$(stat -c %b "$OVERLAY_RESERVE") || fatal "cannot inspect overlay reserve allocation"
+    if [ "$overlay_blocks" -lt "$(((overlay_current_size + 511) / 512))" ]; then
+        printf 'NAOS: clearing an unallocated sparse overlay reserve\n' >&2
+        rollback_overlay_reserve 0 || fatal "cannot reset sparse overlay reserve"
+    fi
+fi
+overlay_available=$(overlay_free_kib) || fatal "cannot check overlay free space"
+while [ "$overlay_available" -lt "$OVERLAY_BOOT_FREE_KIB" ]; do
+    release_overlay_reserve || fatal "overlay reserve exhausted or cannot shrink; userdata has insufficient startup space"
+    overlay_available=$(overlay_free_kib) || fatal "cannot check overlay recovery space"
+done
+if ! mount_userdata_overlay; then
+    while :; do
+        printf 'NAOS: overlay mount failed; releasing 8 MiB and retrying\n' >&2
+        release_overlay_reserve || fatal "persistent root overlay mount failed and reserve is exhausted or cannot shrink"
+        overlay_available=$(overlay_free_kib) || fatal "cannot check overlay retry space"
+        [ "$overlay_available" -ge "$OVERLAY_BOOT_FREE_KIB" ] || continue
+        if mount_userdata_overlay; then break; fi
+    done
+fi
+if [ "$OVERLAY_RESERVE_RELEASED" -eq 0 ]; then
+    if ensure_overlay_reserve; then
+        :
+    else
+        overlay_result=$?
+        [ "$overlay_result" -eq 1 ] || fatal "cannot safely maintain overlay reserve"
+        printf 'NAOS: overlay reserve refill deferred until a later boot with more space\n' >&2
+    fi
+fi
+mkdir -p /newroot/dev /newroot/proc /newroot/sys /newroot/run /newroot/tmp /newroot/userdata
+mkdir -p /run/naos/lower /run/naos/data
+printf '%s\n' "$disk" >/run/naos/boot-device
+printf '%s\n' "$slot" >/run/naos/slot
+printf '%s\n' "$system" >/run/naos/system-device
+printf '3\n' >/run/naos/recovery-version
+mount --move /lower /run/naos/lower
+mount --move /data /run/naos/data
+# Alpine localmount mounts the F2FS root at /userdata from /etc/fstab.
+for fs in proc sys dev tmp run; do
+    mount --move "/$fs" "/newroot/$fs"
+done
+exec switch_root /newroot /sbin/init

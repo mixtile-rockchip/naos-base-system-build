@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "compatible": "naos-mixtile-core3588e-v2-nano-v1",
+  "sector_size": 512,
+  "loader_offset": 32768,
+  "loader_copy_size": 524288,
+  "loader_copies": 2,
+  "fit": {"kernel_load": "0x00400000", "fdt_load": "0x08300000", "ramdisk_load": "0x0a200000"},
+  "partitions": [
+    {"name": "uboot", "start_mib": 8, "size_mib": 4, "payload": "uboot.img"},
+    {"name": "misc", "start_mib": 12, "size_mib": 4},
+    {"name": "boot_a", "start_mib": 16, "size_mib": 50, "payload": "boot.img"},
+    {"name": "boot_b", "start_mib": 66, "size_mib": 50, "payload": "boot.img"},
+    {"name": "system_a", "start_mib": 116, "size_mib": 100, "payload": "system.squashfs"},
+    {"name": "system_b", "start_mib": 216, "size_mib": 100, "payload": "system.squashfs"},
+    {"name": "userdata", "start_mib": 316, "size_mib": 32, "grow": true, "filesystem": "f2fs", "initialize": "initramfs"}
+  ],
+  "environment": {"partition": "misc", "image": "naos-uboot-env.bin", "size": 32768, "offsets": [1048576, 1114112]},
+  "misc_regions": [
+    {"name": "bsp_reserved", "offset": 0, "size": 65536},
+    {"name": "naos_control", "offset": 65536, "size": 65536},
+    {"name": "system_key_import", "offset": 131072, "size": 65536},
+    {"name": "data_key_blob_a", "offset": 196608, "size": 65536},
+    {"name": "data_key_blob_b", "offset": 262144, "size": 65536},
+    {"name": "uboot_env_a", "offset": 1048576, "size": 65536},
+    {"name": "uboot_env_b", "offset": 1114112, "size": 65536}
+  ]
+}

@@ -1,0 +1,46 @@
+stages:
+  - build
+
+variables:
+  GIT_DEPTH: "1"
+  NAOS_PROFILE:
+    value: "development"
+    options:
+      - "development"
+      - "production"
+    description: "kas build profile"
+  MACHINE: "mixtile-core3588e-v2"
+  NAOS_OTA: "0"
+  NAOS_PACKAGE: "0"
+
+build-firmware:
+  stage: build
+  image: yocto-runner:ubuntu-24.04-kas
+  tags:
+    - yocto
+  when: manual
+  allow_failure: false
+  script:
+    - sh .ci/build.sh
+  artifacts:
+    name: "naos-${NAOS_PROFILE}-${MACHINE}-${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - build/tmp/deploy/images/${MACHINE}/naos-${MACHINE}.img
+      - build/tmp/deploy/images/${MACHINE}/MiniLoaderAll.bin
+      - build/tmp/deploy/images/${MACHINE}/boot.img
+      - build/tmp/deploy/images/${MACHINE}/system.img
+      - build/tmp/deploy/images/${MACHINE}/system.squashfs
+      - build/tmp/deploy/images/${MACHINE}/uboot.img
+      - build/tmp/deploy/images/${MACHINE}/idblock.bin
+      - build/tmp/deploy/images/${MACHINE}/uboot-slot.img
+      - build/tmp/deploy/images/${MACHINE}/idblock-slot.img
+      - build/tmp/deploy/images/${MACHINE}/naos-uboot-env.bin
+      - build/tmp/deploy/images/${MACHINE}/manifest.json
+      - build/tmp/deploy/images/${MACHINE}/partition-layout.json
+      - build/tmp/deploy/images/${MACHINE}/naos-*.raucb
+      - build/tmp/deploy/images/${MACHINE}/naos-*.spdx.json
+      - build/tmp/deploy/images/${MACHINE}/naos-*.sbom.json
+      - build/tmp/deploy/images/${MACHINE}/naos-*.kernel.config
+      - build/tmp/deploy/images/${MACHINE}/naos-*.uboot.config
+      - package/${NAOS_PROFILE}/${MACHINE}/

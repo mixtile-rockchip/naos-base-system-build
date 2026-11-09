@@ -1,0 +1,29 @@
+Rockchip RK3588 secure boot keys
+
+Files
+  dev.key: RSA 2048-bit private key for signing IDBlock, Loader, U-Boot FIT and kernel FIT.
+  dev.pubkey: Matching PEM public key used by Rockchip rk_sign_tool.
+  dev.crt: Matching X.509 certificate used by the U-Boot FIT signing tools.
+  All three files must use the same RSA key pair, separate from the OTA keys.
+
+Boards already provisioned with a public key hash require the original matching
+private key. The commands below create a new signing identity; do not replace the
+keys used by a board whose public key hash has already been fused.
+
+Generate a key pair
+  Run these commands in a new, empty directory:
+
+  umask 077
+  openssl genrsa -traditional -out dev.key 2048
+  openssl rsa -in dev.key -pubout -out dev.pubkey
+  openssl req -new -x509 -key dev.key -sha256 -days 3650 \
+    -subj '/CN=NAOS RK3588 Secure Boot/' -out dev.crt
+  chmod 600 dev.key
+
+Verify that the public keys match
+  All three commands must produce the same SHA256 digest. This is the digest of
+  the public key in SPKI DER format, not the Rockchip public key hash for OTP:
+
+  openssl pkey -in dev.key -pubout -outform DER | sha256sum
+  openssl pkey -pubin -in dev.pubkey -outform DER | sha256sum
+  openssl x509 -in dev.crt -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum

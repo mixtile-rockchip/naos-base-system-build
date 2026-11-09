@@ -1,0 +1,10 @@
+Source project: Canonical cloud-utils
+Upstream URL: https://github.com/canonical/cloud-utils/blob/0.33/bin/growpart
+Imported file: /usr/bin/growpart from Debian cloud-guest-utils 0.33-1
+Import date: 2026-10-27
+License: GPL-3.0-only (the original copyright/license header is preserved)
+SHA256: 5b52d058d8c6d21494e1f2a2bdeba63c06f217690136def8fb666c29b29a580e
+
+The input is vendored for reproducible offline bootstrap. It is never read
+from the build host at recipe execution time. Runtime prerequisites are
+declared in naos-growpart_0.33.bb; util-linux sfdisk handles GPT directly.

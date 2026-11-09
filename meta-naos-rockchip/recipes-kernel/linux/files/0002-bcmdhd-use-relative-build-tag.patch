@@ -1,0 +1,24 @@
+From: NAOS maintainers
+Subject: [PATCH] bcmdhd: keep the compiled-source tag relative
+
+Kbuild's src contains the absolute source directory in an O= build. The
+DHD debug version banner embeds BCMDHD_ROOT literally, leaking the Yocto
+build directory and making module bytes depend on the checkout location.
+
+Use the relative Kbuild object directory for this informational tag. Keep
+the full source directory for header lookup and leave debug support enabled.
+
+Upstream-Status: Pending
+---
+diff --git a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile
+--- a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile
++++ b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile
+@@ -476,7 +476,7 @@ BCMDHD_ROOT = $(src)
+ BCMDHD_ROOT = $(src)
+ #$(warning "BCMDHD_ROOT=$(BCMDHD_ROOT)")
+ EXTRA_CFLAGS = $(DHDCFLAGS)
+-EXTRA_CFLAGS += -DDHD_COMPILED=\"$(BCMDHD_ROOT)\"
++EXTRA_CFLAGS += -DDHD_COMPILED=\"$(obj)\"
+ EXTRA_CFLAGS += -I$(BCMDHD_ROOT)/include/ -I$(BCMDHD_ROOT)/
+ ifeq ($(CONFIG_AP6XXX),m)
+ EXTRA_LDFLAGS += --strip-debug

@@ -1,0 +1,11 @@
+# Core supplies the server, target identity and token before starting:
+# rauc-hawkbit-updater -c /path/to/config.conf
+[client]
+hawkbit_server =
+tenant_id = DEFAULT
+target_name =
+auth_token =
+ssl = true
+ssl_verify = true
+post_update_reboot = false
+stream_bundle = false

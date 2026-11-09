@@ -1,0 +1,24 @@
+From: NAOS maintainers
+Subject: [PATCH] Assemble the security-layer userdata overlay
+
+Upstream-Status: Inappropriate [NAOS encrypted image integration]
+
+--- a/assemble-naos-image.py
++++ b/assemble-naos-image.py
+@@ -285,6 +285,7 @@
+     for name in ("fit-builder", "fit-key-dir", "fit-check-sign", "fit-key-dtb"):
+         parser.add_argument("--" + name, type=Path)
+     args = parser.parse_args()
++    args.overlay.append(Path(__file__).parent / "userdata-rootfs")
+     if args.secure_boot:
+         for name in ("fit_builder", "fit_key_dir", "fit_check_sign", "fit_key_dtb"):
+             if getattr(args, name) is None:
+@@ -298,7 +299,7 @@
+     output.mkdir(parents=True, exist_ok=True)
+     version = {"machine": args.machine, "version": args.version, "build_id": args.build_id,
+                "layout_compatible": layout["compatible"], "secure_boot": args.secure_boot,
+-               "system_encryption": False, "data_encryption": False}
++               "system_encryption": False, "data_encryption": True}
+     system_tar = output / "system.tar.gz"
+     assemble_rootfs(args.input_dir / args.rootfs, args.input_dir / args.modules,
+                     args.overlay, args.keyring, system_tar, version, args.epoch)

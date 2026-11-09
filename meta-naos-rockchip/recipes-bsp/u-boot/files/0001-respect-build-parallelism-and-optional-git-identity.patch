@@ -1,0 +1,32 @@
+From: NAOS maintainers
+Subject: [PATCH] Respect caller parallelism and allow builds without Git identity
+
+Yocto controls the allowed parallelism. A clean build machine also need not
+have a developer email configured merely to export unsigned packaging data.
+
+Upstream-Status: Inappropriate [NAOS build integration]
+---
+diff --git a/make.sh b/make.sh
+--- a/make.sh
++++ b/make.sh
+@@ -6,7 +6,7 @@
+ #
+ 
+ set -e
+-JOB=`sed -n "N;/processor/p" /proc/cpuinfo|wc -l`
++JOB=${NAOS_MAKE_JOBS:-8}
+ SUPPORT_LIST=`ls configs/*[r,p][x,v,k][0-9][0-9]*_defconfig`
+ CMD_ARGS=$1
+ 
+diff --git a/scripts/fit-core.sh b/scripts/fit-core.sh
+--- a/scripts/fit-core.sh
++++ b/scripts/fit-core.sh
+@@ -780,7 +780,7 @@ function fit_signcfg_export()
+ 		SIZE=`ls -l  spl/u-boot-spl-nodtb.bin | awk '{ print $5 }'`
+ 		echo "spl_size=${SIZE}" >> ${SIG_CONFIG}
+ 
+-		BUILD_MAIL=`git config --get user.email`
++		BUILD_MAIL=`git config --get user.email || true`
+ 		BUILD_HOST=`hostname`
+ 		BUILD_USER=${USER}
+ 		BUILD_DATE=`date`

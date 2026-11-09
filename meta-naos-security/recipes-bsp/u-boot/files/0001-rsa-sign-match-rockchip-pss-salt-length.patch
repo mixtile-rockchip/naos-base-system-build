@@ -1,0 +1,25 @@
+From: NAOS maintainers
+Subject: [PATCH] rsa: match Rockchip maximum-length PSS signing salt
+
+Match the signing convention used by the existing RK3588 secure boot flow.
+OpenSSL's -2 signing value selects the largest PSS salt permitted by the key.
+
+Upstream-Status: Inappropriate [Rockchip boot-chain signing compatibility]
+---
+diff --git a/lib/rsa/rsa-sign.c b/lib/rsa/rsa-sign.c
+--- a/lib/rsa/rsa-sign.c
++++ b/lib/rsa/rsa-sign.c
+@@ -455,11 +455,9 @@ static int rsa_sign_with_key(EVP_PKEY *pkey, struct padding_algo *padding_algo,
+ 			goto err_sign;
+ 		}
+ 
+-		/* Per RFC 3447 (and convention) the Typical salt length is the
+-		 * length of the output of the digest algorithm.
+-		 */
++		/* Rockchip tools sign with the maximum key-permitted salt. */
+ 		if (EVP_PKEY_CTX_set_rsa_pss_saltlen(ckey,
+-						     checksum_algo->checksum_len) <= 0) {
++						     -2) <= 0) {
+ 			ret = rsa_err("Signer salt length setup failed");
+ 			goto err_sign;
+ 		}

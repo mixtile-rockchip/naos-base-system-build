@@ -1,0 +1,48 @@
+#!/bin/sh
+# Installed only in development initramfs. This script never writes storage.
+set -u
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export LC_ALL=C
+export PS1='(naos-initramfs) # '
+
+mode=${1:-fatal}
+reason=${2:-early boot failed}
+printf '\nNAOS development initramfs shell: %s\n' "$reason"
+printf 'slot=%s system=%s disk=%s userdata=%s\n' \
+    "${NAOS_DEBUG_SLOT:-unknown}" "${NAOS_DEBUG_SYSTEM:-unknown}" \
+    "${NAOS_DEBUG_DISK:-unknown}" "${NAOS_DEBUG_USERDATA:-unknown}"
+printf 'userdata probe: status=%s TYPE="%s"\n' \
+    "${NAOS_DEBUG_PROBE_STATUS:-unknown}" "${NAOS_DEBUG_PROBE_TYPE:-}"
+if [ -r /proc/cmdline ]; then
+    printf 'Kernel command line: '
+    cat /proc/cmdline
+fi
+
+userdata=${NAOS_DEBUG_USERDATA:-}
+if [ -n "$userdata" ] && [ -b "$userdata" ]; then
+    printf '\nblkid including parent partition details:\n'
+    blkid -p -o export "$userdata" 2>&1
+    printf 'blkid status=%s\n' "$?"
+    printf '\nblkid excluding parent partition details:\n'
+    blkid -p -D -o export "$userdata" 2>&1
+    printf 'blkid -D status=%s\n' "$?"
+fi
+
+disk=${NAOS_DEBUG_DISK:-}
+if [ -n "$disk" ] && [ -b "$disk" ]; then
+    printf '\nBoot disk partition table:\n'
+    sfdisk --dump "$disk" 2>&1
+fi
+
+case "$mode" in
+    break) printf '\nType exit to continue boot, or reboot -f to restart.\n' ;;
+    *) printf '\nBoot stopped. Type reboot -f to restart. Exiting reopens this shell.\n' ;;
+esac
+printf 'Diagnostic commands: blkid -p -D /dev/naos/userdata; cat /proc/partitions; cat /proc/mounts\n\n'
+
+# ttyFIQ0 is this board's serial console. Give ash its own controlling tty
+# for interactive input, job control and Ctrl-C, while /init remains PID 1.
+if [ -c /dev/ttyFIQ0 ]; then
+    exec setsid -c /bin/sh -i </dev/ttyFIQ0 >/dev/ttyFIQ0 2>&1
+fi
+exec setsid cttyhack /bin/sh -i </dev/console >/dev/console 2>&1

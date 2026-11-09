@@ -1,0 +1,21 @@
+System partition encryption key
+
+File format
+  system.key: Exactly 64 lowercase hexadecimal characters representing a 32-byte
+  AES key, with no newline. This is not a 64-byte binary key. File mode must be 0600.
+
+Generate a key
+  Run these commands in a new, empty directory. Do not overwrite an existing key.
+
+  umask 077
+  openssl rand -hex 32 | tr -d '\n' > system.key
+  chmod 600 system.key
+  test "$(wc -c < system.key)" -eq 64
+
+Usage
+  The build encrypts the system SquashFS with this key and places its initial
+  import record in misc. On first boot, TEE/HUK wraps the key into a blob, stores
+  it in misc and clears the plaintext import record. No TA UUID is required.
+  The device generates the userdata key with TEE Trusted Keys, separately from
+  system.key. System OTA bundles for existing devices must use the same key that
+  those devices can unwrap.

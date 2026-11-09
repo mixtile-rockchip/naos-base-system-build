@@ -1,0 +1,29 @@
+SSH user certificate CA
+
+Files
+  ssh_ca_key: CA private key for signing user login certificates. Keep it off devices.
+  ssh_ca_key.pub: CA public key installed at /etc/ssh/ssh_ca_key.pub on devices.
+  When using an existing CA, use the public key matching its private key.
+  This CA is independent of the OTA signing certificate and secure boot keys.
+
+Generate a CA
+  Run these commands in a new, empty directory:
+
+  umask 077
+  ssh-keygen -t ed25519 -f ssh_ca_key -N '' -C 'NAOS SSH user CA'
+  chmod 600 ssh_ca_key
+
+Issue a login certificate
+  Generate a client key, then sign its public key with the CA private key.
+  This example allows root and naos logins for 52 weeks:
+
+  ssh-keygen -t ed25519 -f client-key -N '' -C 'NAOS administrator'
+  ssh-keygen -s ssh_ca_key -I naos-admin -n root,naos -V +52w client-key.pub
+
+  Use client-key-cert.pub together with the client private key:
+
+  ssh -i client-key -o CertificateFile=client-key-cert.pub root@DEVICE_IP
+
+  The certificate principals must include the login username. Keep the client
+  private key and CA private key on the administrator's machine. Devices need
+  only the CA public key.

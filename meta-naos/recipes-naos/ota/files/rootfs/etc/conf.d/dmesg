@@ -1,0 +1,2 @@
+# Keep kernel informational messages visible after OpenRC takes over.
+dmesg_level="7"

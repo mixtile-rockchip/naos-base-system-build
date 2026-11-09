@@ -1,0 +1,42 @@
+GitLab CI builds
+
+Start a pipeline, then run the manual build-firmware job on a yocto runner.
+The runner image is yocto-runner:ubuntu-24.04-kas and must run as a non-root user.
+
+Build variables
+  NAOS_PROFILE=development       Select development or production.
+  MACHINE=mixtile-core3588e-v2    Select the board.
+  NAOS_OTA=0                    Set 1 to generate system and bootloader OTA bundles.
+  NAOS_PACKAGE=0                Set 1 to export image-generator inputs instead of
+                                assembling factory images and OTA bundles.
+  NAOS_VERSION, NAOS_BUILD_ID    Optionally set release identifiers.
+
+Other feature defaults come from the selected kas profile. Production enables
+secure boot, disk encryption and SBOM; development leaves them disabled.
+
+CI/CD File variables
+  NAOS_CI_OTA_PRIVATE_KEY             OTA signing.key.pem
+  NAOS_CI_OTA_CERTIFICATE             OTA signing.cert.pem
+  NAOS_CI_SECURE_BOOT_PRIVATE_KEY     Secure boot dev.key
+  NAOS_CI_SECURE_BOOT_CERTIFICATE     Secure boot dev.crt
+  NAOS_CI_SECURE_BOOT_PUBLIC_KEY      Secure boot dev.pubkey
+  NAOS_CI_SYSTEM_KEY                 system.key
+  NAOS_CI_SSH_CA_PUBLIC_KEY           ssh_ca_key.pub
+
+Configure these in Settings > CI/CD > Variables as protected File variables.
+Run builds from a protected branch or tag so the variables are available.
+system.key must be exactly 64 lowercase hexadecimal characters without a newline.
+The OTA certificate is required for every build. Private signing and encryption
+inputs are required only when their corresponding build features use them.
+Production also requires the SSH CA public key.
+
+The build script stages File variables in a private temporary directory outside
+the checkout and removes that directory on exit. Key files are not CI artifacts.
+
+Caches
+  DL_DIR defaults to /cache/yocto/${CI_PROJECT_ID}/downloads.
+  SSTATE_DIR defaults to /cache/yocto/${CI_PROJECT_ID}/sstate-cache.
+  Set either variable to override its default. Build work stays in the job checkout.
+
+Artifacts contain only firmware, OTA bundles, SBOM files and image-generator
+exports that the selected build produced. They expire after one week.

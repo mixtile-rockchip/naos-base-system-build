@@ -1,0 +1,24 @@
+RAUC OTA signing keys
+
+Files
+  signing.key.pem: Private key for signing system and bootloader RAUC bundles.
+  signing.cert.pem: Matching X.509 certificate installed on devices to verify bundles.
+  These keys are independent of the secure boot keys, SSH CA and system.key.
+
+Generate a key pair
+  Run these commands in a new, empty directory. Do not overwrite an existing key.
+
+  umask 077
+  openssl req -x509 -newkey rsa:3072 -nodes -sha256 \
+    -keyout signing.key.pem -out signing.cert.pem -days 3650 \
+    -subj '/CN=NAOS Development OTA signing/' \
+    -addext 'basicConstraints=critical,CA:TRUE' \
+    -addext 'keyUsage=critical,digitalSignature,keyCertSign,cRLSign'
+  chmod 600 signing.key.pem
+
+Verify the certificate
+  openssl verify -CAfile signing.cert.pem signing.cert.pem
+  openssl x509 -in signing.cert.pem -noout -subject -dates -fingerprint -sha256
+
+Devices must trust the certificate matching the signing key. Changing only the
+build-side private key causes existing devices to reject the new bundles.

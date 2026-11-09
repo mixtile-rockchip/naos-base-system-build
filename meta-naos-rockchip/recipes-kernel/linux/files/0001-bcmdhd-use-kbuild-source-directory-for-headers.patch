@@ -1,0 +1,24 @@
+From: NAOS maintainers
+Subject: [PATCH] bcmdhd: use the Kbuild source directory for local headers
+
+Linux 6.12 sets src to VPATH/obj for an out-of-tree O= build. In this
+case src already includes the source tree path. Prepending srctree again
+produces a nonexistent doubled path and hides include/typedefs.h.
+
+Use src, through BCMDHD_ROOT, directly for both local include directories.
+It also remains valid for an in-tree build, where src is relative.
+
+Upstream-Status: Pending
+---
+diff --git a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile
+--- a/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile
++++ b/drivers/net/wireless/rockchip_wlan/rkwifi/bcmdhd/Makefile
+@@ -477,7 +477,7 @@ BCMDHD_ROOT = $(src)
+ #$(warning "BCMDHD_ROOT=$(BCMDHD_ROOT)")
+ EXTRA_CFLAGS = $(DHDCFLAGS)
+ EXTRA_CFLAGS += -DDHD_COMPILED=\"$(BCMDHD_ROOT)\"
+-EXTRA_CFLAGS += -I$(srctree)/$(BCMDHD_ROOT)/include/ -I$(srctree)/$(BCMDHD_ROOT)/
++EXTRA_CFLAGS += -I$(BCMDHD_ROOT)/include/ -I$(BCMDHD_ROOT)/
+ ifeq ($(CONFIG_AP6XXX),m)
+ EXTRA_LDFLAGS += --strip-debug
+ endif

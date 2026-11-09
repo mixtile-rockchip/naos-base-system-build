@@ -1,0 +1,50 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+
+naos_git_guard() {
+    naos_git_command=
+    # Skip Git's global options without changing the arguments passed to Git.
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -c|-C|--git-dir|--work-tree|--namespace|--config-env)
+                [ "$#" -ge 2 ] || return 0
+                shift 2 ;;
+            -*) shift ;;
+            *) naos_git_command=$1; shift; break ;;
+        esac
+    done
+    case "$naos_git_command" in
+        clone)
+            for naos_git_argument in "$@"; do
+                case "$naos_git_argument" in
+                    --mirror|--mirror=*)
+                        echo "NAOS BSP: refusing a full Git mirror clone; shallow fetch must succeed." >&2
+                        return 64 ;;
+                esac
+            done ;;
+        fetch)
+            naos_git_depth=0
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --depth)
+                        if [ "$#" -lt 2 ] || [ "$2" != 1 ]; then
+                            echo "NAOS BSP: Git fetch requires --depth 1." >&2
+                            return 64
+                        fi
+                        naos_git_depth=1; shift 2 ;;
+                    --depth=1) naos_git_depth=1; shift ;;
+                    --depth=*)
+                        echo "NAOS BSP: Git fetch requires --depth 1." >&2
+                        return 64 ;;
+                    *) shift ;;
+                esac
+            done
+            if [ "$naos_git_depth" != 1 ]; then
+                echo "NAOS BSP: refusing a Git fetch without --depth 1." >&2
+                return 64
+            fi ;;
+    esac
+}
+
+naos_git_guard "$@" || exit 64
+exec git "$@"

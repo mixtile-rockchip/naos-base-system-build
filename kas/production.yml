@@ -1,0 +1,15 @@
+header:
+  version: 14
+  includes:
+    - kas/development.yml
+
+# Same sources and build layout; production login/console policy is selected
+# below. SBOM, signing and both encrypted filesystems are enabled unless overridden.
+env:
+  NAOS_SBOM: "1"
+  NAOS_SECURE_BOOT: "1"
+  NAOS_DISK_ENCRYPTION: "1"
+
+local_conf_header:
+  naos-profile: |
+    NAOS_BUILD_MODE = "production"

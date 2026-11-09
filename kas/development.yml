@@ -1,0 +1,89 @@
+header:
+  version: 14
+
+build_system: oe
+distro: naos
+# Default board for both profiles; override with MACHINE=<machine>.
+machine: mixtile-core3588e-v2
+target: naos-release
+
+# Host values override these defaults. The release target creates OTA bundles
+# only when NAOS_OTA=1; factory images only need the OTA verification certificate.
+env:
+  MACHINE: null
+  NAOS_VERSION: null
+  NAOS_BUILD_ID: null
+  NAOS_OTA: "0"
+  NAOS_PACKAGE: "0"
+  NAOS_SBOM: "0"
+  NAOS_SECURE_BOOT: "0"
+  NAOS_DISK_ENCRYPTION: "0"
+  NAOS_SYSTEM_ENCRYPTION: null
+  NAOS_DATA_ENCRYPTION: null
+  NAOS_PROJECT_ROOT: null
+  NAOS_OTA_KEY_DIR: null
+  NAOS_SECURE_BOOT_KEY_DIR: null
+  NAOS_SECURE_BOOT_BURN_KEY_HASH: "0"
+  NAOS_SYSTEM_KEY_DIR: null
+  NAOS_SSH_CA_KEY: null
+
+repos:
+  naos:
+    path: .
+    layers:
+      meta-naos:
+      meta-naos-rockchip:
+      meta-naos-security:
+      meta-naos-package:
+  oe-core:
+    url: https://github.com/openembedded/openembedded-core.git
+    path: sources/oe-core
+    commit: 0f03c732a0a2d0506b41b1abe60b3f368b2300dc
+    layers:
+      meta:
+  bitbake:
+    url: https://github.com/openembedded/bitbake.git
+    path: sources/bitbake
+    commit: 6e260eb6ab1631607ea414d9ff8ede1155faa5d9
+    layers:
+      .: excluded
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded.git
+    path: sources/meta-openembedded
+    commit: f28a144aa0a0ae05ca2ee91e1aef6aa05f6a12db
+    layers:
+      meta-oe:
+      meta-python:
+      meta-networking:
+      meta-filesystems:
+  meta-rauc:
+    url: https://github.com/rauc/meta-rauc.git
+    path: sources/meta-rauc
+    commit: 38da0e5866a953e664001ba90b5edad68d68cd5d
+
+bblayers_conf_header:
+  naos: |
+    LCONF_VERSION = "7"
+    BBPATH = "${TOPDIR}"
+    BBFILES ?= ""
+
+local_conf_header:
+  naos: |
+    CONF_VERSION = "2"
+    # kas forwards these environment variables; retain local defaults otherwise.
+    DL_DIR ?= "${TOPDIR}/../downloads"
+    SSTATE_DIR ?= "${TOPDIR}/../sstate-cache"
+    BB_GIT_SHALLOW = "1"
+    BB_GIT_SHALLOW_DEPTH = "1"
+    BB_GENERATE_SHALLOW_TARBALLS = "1"
+    ALPINE_ROOTFS_PROCESSORS ?= "4"
+    PATCHRESOLVE = "noop"
+    CONNECTIVITY_CHECK_URIS = ""
+
+  # Development SSH uses a password, without injected SSH login keys/CA.
+  # RAUC bundle authentication remains enabled independently of boot signing.
+  naos-profile: |
+    NAOS_BUILD_MODE = "development"
+    ALPINE_DEFAULT_USER = "naos"
+    ALPINE_DEFAULT_PASSWORD = "naos"
+    ALPINE_CONSOLE_SHELL = "1"

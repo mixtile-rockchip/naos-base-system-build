@@ -1,0 +1,2 @@
+# Treat application userdata as required for normal NAOS startup.
+critical_mounts="/userdata"
