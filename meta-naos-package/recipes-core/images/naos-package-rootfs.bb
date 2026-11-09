@@ -36,7 +36,7 @@ python do_package_inputs() {
     naos_package.rootfs.produce(d, Path(d.getVar('NAOS_PACKAGE_ROOTFS_OUTPUT')))
 }
 do_package_inputs[cleandirs] = "${NAOS_PACKAGE_ROOTFS_OUTPUT}"
-do_package_inputs[depends] = "naos-alpine-rootfs:do_deploy virtual/kernel:do_deploy rauc:do_deploy rauc-hawkbit-updater:do_deploy naos-core:do_deploy naos-container:do_deploy ${NAOS_PACKAGE_INITRAMFS_RECIPE}:do_image_complete"
+do_package_inputs[depends] = "naos-alpine-rootfs:do_deploy virtual/kernel:do_deploy rauc:do_deploy rauc-hawkbit-updater:do_deploy naos-core:do_deploy naos-container:do_deploy naos-apk-repository:do_deploy ${NAOS_PACKAGE_INITRAMFS_RECIPE}:do_image_complete"
 do_package_inputs[depends] += "${@'kernel-devsrc:do_deploy' if d.getVar('NAOS_BUILD_MODE') == 'development' else ''}"
 do_package_inputs[depends] += "${@' '.join(pn + ':do_naos_sbom_component' for pn in d.getVar('NAOS_PACKAGE_COMPONENT_RECIPES').split()) if d.getVar('NAOS_SBOM') == '1' else ''}"
 do_package_inputs[recrdeptask] = "${@'do_naos_sbom_component' if d.getVar('NAOS_SBOM') == '1' else ''}"

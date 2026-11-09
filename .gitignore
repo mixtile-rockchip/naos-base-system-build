@@ -3,6 +3,7 @@
 /downloads/
 /sstate-cache/
 /package/
+/apk-output/
 /.kas_*
 /bitbake-cookerdaemon.log
 /bitbake.lock

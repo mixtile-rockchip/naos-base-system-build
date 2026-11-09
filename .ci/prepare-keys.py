@@ -15,6 +15,7 @@ FILES = {
     "NAOS_CI_SECURE_BOOT_PUBLIC_KEY": "secure-boot/dev.pubkey",
     "NAOS_CI_SYSTEM_KEY": "system-encryption/system.key",
     "NAOS_CI_SSH_CA_PUBLIC_KEY": "ssh-ca/ssh_ca_key.pub",
+    "NAOS_CI_APK_SIGNING_PUBLIC_KEY": "apk-repository/naos-apk.rsa.pub",
 }
 
 

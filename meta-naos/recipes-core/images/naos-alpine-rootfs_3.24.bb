@@ -13,6 +13,8 @@ ALPINE_SEED_VERSION = "3.24.2"
 ALPINE_SEED_FILENAME = "alpine-minirootfs-${ALPINE_SEED_VERSION}-${ALPINE_ARCH}.tar.gz"
 ALPINE_SEED_SHA256 = "9bf70a7f18ea44094cbb5f70c58f9af129c8214745743db0e68e5502cc2ce773"
 ALPINE_MIRROR ?= "https://dl-cdn.alpinelinux.org/alpine"
+# Retain checksum-pinned APKs after the rolling upstream repositories replace them.
+MIRRORS:prepend = "https://dl-cdn[.]alpinelinux[.]org/alpine/(.*) https://packages.naos.ai/sources/alpine/\1 \n"
 
 SRC_URI = " \
     ${ALPINE_MIRROR}/${ALPINE_BRANCH}/releases/${ALPINE_ARCH}/${ALPINE_SEED_FILENAME};name=seed;unpack=0 \

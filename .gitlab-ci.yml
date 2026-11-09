@@ -1,41 +1,42 @@
 stages:
   - build
+  - package
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH'
+    - when: never
 
 variables:
   GIT_DEPTH: "1"
-  NAOS_PROFILE:
-    value: "development"
-    options:
-      - "development"
-      - "production"
-    description: "kas build profile"
   MACHINE: "mixtile-core3588e-v2"
   NAOS_OTA: "0"
-  NAOS_PACKAGE: "0"
 
-build-firmware:
+.yocto-build:
   stage: build
   image: yocto-runner:ubuntu-24.04-kas
   tags:
     - yocto
-  when: manual
+  resource_group: yocto-${CI_PROJECT_ID}
+  rules:
+    - if: &release_tag '$CI_COMMIT_TAG =~ /^[a-z0-9][a-z0-9._+-]*-(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/'
+      when: on_success
+    - when: manual
   allow_failure: false
   script:
     - sh .ci/build.sh
+
+.yocto-image:
+  extends: .yocto-build
+  variables:
+    NAOS_PACKAGE: "0"
   artifacts:
-    name: "naos-${NAOS_PROFILE}-${MACHINE}-${CI_COMMIT_SHORT_SHA}"
+    name: "naos-${NAOS_PROFILE}-image-${MACHINE}-${CI_COMMIT_REF_SLUG}"
     expire_in: 1 week
     paths:
-      - build/tmp/deploy/images/${MACHINE}/naos-${MACHINE}.img
+      - build/tmp/deploy/images/${MACHINE}/naos-${MACHINE}.img.zst
       - build/tmp/deploy/images/${MACHINE}/MiniLoaderAll.bin
-      - build/tmp/deploy/images/${MACHINE}/boot.img
-      - build/tmp/deploy/images/${MACHINE}/system.img
-      - build/tmp/deploy/images/${MACHINE}/system.squashfs
-      - build/tmp/deploy/images/${MACHINE}/uboot.img
-      - build/tmp/deploy/images/${MACHINE}/idblock.bin
-      - build/tmp/deploy/images/${MACHINE}/uboot-slot.img
-      - build/tmp/deploy/images/${MACHINE}/idblock-slot.img
-      - build/tmp/deploy/images/${MACHINE}/naos-uboot-env.bin
       - build/tmp/deploy/images/${MACHINE}/manifest.json
       - build/tmp/deploy/images/${MACHINE}/partition-layout.json
       - build/tmp/deploy/images/${MACHINE}/naos-*.raucb
@@ -43,4 +44,77 @@ build-firmware:
       - build/tmp/deploy/images/${MACHINE}/naos-*.sbom.json
       - build/tmp/deploy/images/${MACHINE}/naos-*.kernel.config
       - build/tmp/deploy/images/${MACHINE}/naos-*.uboot.config
+
+.yocto-inputs:
+  extends: .yocto-build
+  variables:
+    NAOS_PACKAGE: "1"
+  artifacts:
+    name: "naos-${NAOS_PROFILE}-inputs-${MACHINE}-${CI_COMMIT_REF_SLUG}"
+    expire_in: 1 week
+    paths:
       - package/${NAOS_PROFILE}/${MACHINE}/
+
+build-development-image:
+  extends: .yocto-image
+  variables:
+    NAOS_PROFILE: development
+
+build-development-inputs:
+  extends: .yocto-inputs
+  variables:
+    NAOS_PROFILE: development
+
+build-production-image:
+  extends: .yocto-image
+  variables:
+    NAOS_PROFILE: production
+
+build-production-inputs:
+  extends: .yocto-inputs
+  variables:
+    NAOS_PROFILE: production
+
+.package-inputs:
+  stage: package
+  image: seapapa/apkbuild:latest
+  tags:
+    - apk-builder-runner
+  variables:
+    NAOS_PACKAGE: "1"
+  rules:
+    - if: *release_tag
+      when: on_success
+    - when: never
+  resource_group: apk-repository-${NAOS_PROFILE}
+  before_script:
+    - |
+      if [ "$(id -u)" = 0 ]; then
+        apk add --no-cache python3 openssh-client
+      else
+        sudo apk add --no-cache python3 openssh-client
+      fi
+  script:
+    - sh .ci/package-apk.sh
+  artifacts:
+    name: "${MACHINE}-alpine-${NAOS_PROFILE}-${CI_COMMIT_TAG}"
+    expire_in: 1 week
+    paths:
+      - apk-output/${NAOS_PROFILE}/*.apk
+      - apk-output/${NAOS_PROFILE}/package.json
+
+package-development:
+  extends: .package-inputs
+  variables:
+    NAOS_PROFILE: development
+  needs:
+    - job: build-development-inputs
+      artifacts: true
+
+package-production:
+  extends: .package-inputs
+  variables:
+    NAOS_PROFILE: production
+  needs:
+    - job: build-production-inputs
+      artifacts: true

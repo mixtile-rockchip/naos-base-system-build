@@ -1,0 +1,20 @@
+Alpine repository signing key
+
+Files
+  naos-apk.rsa: RSA private key for signing APK packages and repository indexes.
+  naos-apk.rsa.pub: matching public key installed in /etc/apk/keys on clients.
+  The public filename must match the name recorded in the APK signature.
+
+Generate in a new, empty directory
+  umask 077
+  openssl genrsa -out naos-apk.rsa 4096
+  openssl rsa -in naos-apk.rsa -pubout -out naos-apk.rsa.pub
+  chmod 600 naos-apk.rsa
+  chmod 644 naos-apk.rsa.pub
+
+Check the key pair
+  openssl rsa -in naos-apk.rsa -check -noout
+  openssl rsa -in naos-apk.rsa -pubout -outform DER | sha256sum
+  openssl pkey -pubin -in naos-apk.rsa.pub -outform DER | sha256sum
+
+The two public-key digests must match.

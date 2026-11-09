@@ -1,0 +1,22 @@
+# Maintainer: Wushuqi <shuqi.wu@qq.com>
+# The CI packager verifies the export and supplies these values.
+: "${NAOS_APK_MACHINE:?Set NAOS_APK_MACHINE to the verified export machine}"
+: "${NAOS_APK_VERSION:?Set NAOS_APK_VERSION to an Alpine pkgver}"
+: "${NAOS_APK_SOURCE_SHA512:?Set NAOS_APK_SOURCE_SHA512 to the inputs.tar checksum}"
+
+pkgname="${NAOS_APK_MACHINE}-alpine-prod"
+pkgver="$NAOS_APK_VERSION"
+pkgrel=0
+pkgdesc="NAOS production image-generator inputs for $NAOS_APK_MACHINE"
+url="https://www.mixtile.com"
+arch="all"
+license="custom"
+options="!strip !tracedeps !archcheck !check"
+source="inputs.tar"
+sha512sums="$NAOS_APK_SOURCE_SHA512  inputs.tar"
+_install_prefix="/usr/share/naos/image-inputs/production/$NAOS_APK_MACHINE"
+
+package() {
+    install -d "$pkgdir$_install_prefix"
+    cp -a "$srcdir/inputs/." "$pkgdir$_install_prefix/"
+}

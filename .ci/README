@@ -1,18 +1,65 @@
 GitLab CI builds
 
-Start a pipeline, then run the manual build-firmware job on a yocto runner.
-The runner image is yocto-runner:ubuntu-24.04-kas and must run as a non-root user.
+The first stage has four independent jobs, each with its own artifact archive:
+  build-development-image    Development factory image, NAOS_PACKAGE=0.
+  build-development-inputs   Development image-generator inputs, NAOS_PACKAGE=1.
+  build-production-image     Production factory image, NAOS_PACKAGE=0.
+  build-production-inputs    Production image-generator inputs, NAOS_PACKAGE=1.
+
+They use the yocto runner and yocto-runner:ubuntu-24.04-kas as a non-root user.
+Jobs in this project are serialized to reuse its Yocto downloads and sstate
+cache. On a branch, run the desired jobs manually. A numeric release tag starts
+all four jobs automatically; the tag helper verifies the selected MACHINE.
+
+The second stage has package-development and package-production. Each downloads
+only its matching inputs job's artifacts, not either factory image archive.
+It uses apk-builder-runner and seapapa/apkbuild:latest. The two runners do not
+share a working directory or Yocto caches.
 
 Build variables
-  NAOS_PROFILE=development       Select development or production.
   MACHINE=mixtile-core3588e-v2    Select the board.
   NAOS_OTA=0                    Set 1 to generate system and bootloader OTA bundles.
-  NAOS_PACKAGE=0                Set 1 to export image-generator inputs instead of
-                                assembling factory images and OTA bundles.
-  NAOS_VERSION, NAOS_BUILD_ID    Optionally set release identifiers.
+  NAOS_VERSION, NAOS_BUILD_ID    Optionally set identifiers for non-release builds.
 
-Other feature defaults come from the selected kas profile. Production enables
-secure boot, disk encryption and SBOM; development leaves them disabled.
+Each CI job fixes its own profile and image/export mode. Local kas builds
+retain NAOS_PACKAGE=0. Other feature defaults come from the selected kas
+profile. Production enables secure boot, disk encryption and SBOM; development
+leaves them disabled.
+
+APK releases
+  A tag must exactly match MACHINE-X.Y.Z, for example:
+    mixtile-core3588e-v2-1.0.0
+  The tag sets the NAOS and APK version to 1.0.0; the APK revision is r0.
+  Each package job runs automatically when its matching input build succeeds.
+  Branch pipelines do not publish APKs.
+
+The selected apk/development/rk3588/APKBUILD or apk/production/rk3588/APKBUILD
+packages the complete verified export without changing its inner files or
+archives. The package names distinguish the profiles:
+  Development: MACHINE-alpine-dev, for example mixtile-core3588e-v2-alpine-dev.
+  Production:  MACHINE-alpine-prod, for example mixtile-core3588e-v2-alpine-prod.
+Both packages are published to the same repository directory and index:
+  https://packages.naos.ai/repository/x86_64/
+The installed export is at /usr/share/naos/image-inputs/PROFILE/MACHINE.
+APKBUILD uses arch="all"; the current builder produces x86_64 packages for the
+image-generator host. The export's target architecture remains aarch64.
+Each job's APK and package.json are retained in apk-output/PROFILE/.
+
+The package stage installs Python and the SSH client, builds and verifies the
+APK, signs a merged repository index in CI, then uploads the APK and index over
+SSH. The server stores the public verification key and publishes the update
+atomically; the signing private key remains in CI. Publication checks for
+concurrent updates to the common repository index.
+
+Repository variables
+  NAOS_APK_REPOSITORY_URL  https://packages.naos.ai/repository
+  NAOS_APK_SSH_HOST        56.10.200.210
+  NAOS_APK_SSH_USER        ubuntu
+
+The repository variable is the HTTP base address. The publisher appends the
+architecture; do not append a profile to NAOS_APK_REPOSITORY_URL.
+The public verification key is at https://packages.naos.ai/keys/naos-apk.rsa.pub.
+https://www.mixtile.com is the APKBUILD homepage, not the repository endpoint.
 
 CI/CD File variables
   NAOS_CI_OTA_PRIVATE_KEY             OTA signing.key.pem
@@ -22,9 +69,14 @@ CI/CD File variables
   NAOS_CI_SECURE_BOOT_PUBLIC_KEY      Secure boot dev.pubkey
   NAOS_CI_SYSTEM_KEY                 system.key
   NAOS_CI_SSH_CA_PUBLIC_KEY           ssh_ca_key.pub
+  NAOS_CI_APK_SIGNING_KEY            APK repository signing private key
+  NAOS_CI_APK_SIGNING_PUBLIC_KEY     naos-apk.rsa.pub
+  NAOS_CI_APK_SSH_PRIVATE_KEY        Restricted repository upload SSH private key
+  NAOS_CI_APK_SSH_KNOWN_HOSTS        Pinned repository server SSH host key
 
 Configure these in Settings > CI/CD > Variables as protected File variables.
 Run builds from a protected branch or tag so the variables are available.
+Protect the MACHINE-* release tags before publishing APKs.
 system.key must be exactly 64 lowercase hexadecimal characters without a newline.
 The OTA certificate is required for every build. Private signing and encryption
 inputs are required only when their corresponding build features use them.
@@ -40,3 +92,6 @@ Caches
 
 Artifacts contain only firmware, OTA bundles, SBOM files and image-generator
 exports that the selected build produced. They expire after one week.
+Factory images use .img.zst compression to avoid duplicating A/B payloads in
+the artifact archive. Restore the raw image before flashing:
+  zstd --long=28 -d naos-mixtile-core3588e-v2.img.zst

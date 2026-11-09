@@ -52,6 +52,7 @@ python do_assemble() {
         "--overlay", d.expand("${DEPLOY_DIR_IMAGE}/naos-hawkbit-updater"),
         "--overlay", d.expand("${DEPLOY_DIR_IMAGE}/naos-container"),
         "--overlay", d.getVar("NAOS_CORE_RUNTIME"),
+        "--overlay", deploy + "/naos-apk-repository",
         "--keyring", d.getVar("NAOS_OTA_KEYRING"),
         "--mkimage", d.getVar("NAOS_FIT_MKIMAGE"),
         "--sqfstar", d.expand("${STAGING_BINDIR_NATIVE}/sqfstar"),
@@ -75,7 +76,7 @@ python do_assemble() {
     subprocess.run(args, check=True)
 }
 do_assemble[cleandirs] = "${B}/images"
-do_assemble[depends] += "virtual/kernel:do_deploy virtual/bootloader:do_deploy rauc:do_deploy rauc-hawkbit-updater:do_deploy naos-container:do_deploy naos-core:do_deploy naos-initramfs:do_image_complete naos-alpine-rootfs:do_deploy"
+do_assemble[depends] += "virtual/kernel:do_deploy virtual/bootloader:do_deploy rauc:do_deploy rauc-hawkbit-updater:do_deploy naos-container:do_deploy naos-core:do_deploy naos-initramfs:do_image_complete naos-alpine-rootfs:do_deploy naos-apk-repository:do_deploy"
 do_assemble[depends] += "${@'kernel-devsrc:do_deploy' if d.getVar('NAOS_BUILD_MODE') == 'development' else ''}"
 do_assemble[vardeps] += "NAOS_BUILD_MODE NAOS_VERSION NAOS_BUILD_ID NAOS_LAYOUT_FILE NAOS_OTA_OVERLAY NAOS_OTA_KEYRING NAOS_SECURE_BOOT NAOS_FIT_BUILDER NAOS_FIT_MKIMAGE NAOS_FIT_CHECK_SIGN NAOS_FIT_KEY_DTB NAOS_SECURE_BOOT_KEY_DIR NAOS_RESOURCE_FILE NAOS_SBOM"
 addtask assemble after do_unpack do_prepare_recipe_sysroot before do_deploy

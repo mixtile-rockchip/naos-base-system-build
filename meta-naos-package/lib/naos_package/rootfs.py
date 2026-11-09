@@ -76,7 +76,7 @@ def produce(d, output):
         'system_encryption':d.getVar('NAOS_SYSTEM_ENCRYPTION') == '1',
         'data_encryption':d.getVar('NAOS_DATA_ENCRYPTION') == '1'}
     overlays = [Path(d.getVar('NAOS_PACKAGE_OTA_OVERLAY'))] + [deploy / name for name in (
-        'naos-rauc', 'naos-hawkbit-updater', 'naos-container', 'naos-core')]
+        'naos-rauc', 'naos-hawkbit-updater', 'naos-container', 'naos-core', 'naos-apk-repository')]
     if profile == 'development':
         overlays.append(deploy / 'naos-kernel-devsrc')
     if version['data_encryption']:
