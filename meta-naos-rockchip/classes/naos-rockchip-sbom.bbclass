@@ -9,4 +9,4 @@ python naos_export_bsp_sbom() {
 }
 do_deploy[postfuncs] += "${@'naos_export_bsp_sbom' if d.getVar('NAOS_SBOM') == '1' else ''}"
 do_deploy[file-checksums] += "${@naos.sbom_metadata.dependencies(d) if d.getVar('NAOS_SBOM') == '1' else ''}"
-do_deploy[vardeps] += "NAOS_SBOM PN BPN PV LICENSE HOMEPAGE SRC_URI CVE_PRODUCT NAOS_SBOM_COMPONENT_EXTENSION NAOS_SBOM_EXTENSION_DIR"
+do_deploy[vardeps] += "NAOS_SBOM NAOS_BUILD_MODE nonarch_base_libdir PN BPN PV LICENSE HOMEPAGE SRC_URI CVE_PRODUCT NAOS_SBOM_COMPONENT_EXTENSION NAOS_SBOM_EXTENSION_DIR"

@@ -11,9 +11,9 @@
     {"name": "misc", "start_mib": 12, "size_mib": 4},
     {"name": "boot_a", "start_mib": 16, "size_mib": 50, "payload": "boot.img"},
     {"name": "boot_b", "start_mib": 66, "size_mib": 50, "payload": "boot.img"},
-    {"name": "system_a", "start_mib": 116, "size_mib": 100, "payload": "system.squashfs"},
-    {"name": "system_b", "start_mib": 216, "size_mib": 100, "payload": "system.squashfs"},
-    {"name": "userdata", "start_mib": 316, "size_mib": 32, "grow": true, "filesystem": "f2fs", "initialize": "initramfs"}
+    {"name": "system_a", "start_mib": 116, "size_mib": 200, "payload": "system.squashfs"},
+    {"name": "system_b", "start_mib": 316, "size_mib": 200, "payload": "system.squashfs"},
+    {"name": "userdata", "start_mib": 516, "size_mib": 32, "grow": true, "filesystem": "f2fs", "initialize": "initramfs"}
   ],
   "environment": {"partition": "misc", "image": "naos-uboot-env.bin", "size": 32768, "offsets": [1048576, 1114112]},
   "misc_regions": [

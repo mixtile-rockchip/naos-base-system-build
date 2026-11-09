@@ -58,6 +58,8 @@ python do_assemble() {
         "--epoch", d.getVar("SOURCE_DATE_EPOCH") or "0",
         "--processors", d.getVar("ALPINE_ROOTFS_PROCESSORS") or "4",
     ]
+    if d.getVar("NAOS_BUILD_MODE") == "development":
+        args += ["--overlay", deploy + "/naos-kernel-devsrc"]
     if d.getVar("NAOS_RESOURCE_FILE"):
         args += ["--resource", d.getVar("NAOS_RESOURCE_FILE")]
     if d.getVar("NAOS_SBOM") == "1":
@@ -74,7 +76,8 @@ python do_assemble() {
 }
 do_assemble[cleandirs] = "${B}/images"
 do_assemble[depends] += "virtual/kernel:do_deploy virtual/bootloader:do_deploy rauc:do_deploy rauc-hawkbit-updater:do_deploy naos-container:do_deploy naos-core:do_deploy naos-initramfs:do_image_complete naos-alpine-rootfs:do_deploy"
-do_assemble[vardeps] += "NAOS_VERSION NAOS_BUILD_ID NAOS_LAYOUT_FILE NAOS_OTA_OVERLAY NAOS_OTA_KEYRING NAOS_SECURE_BOOT NAOS_FIT_BUILDER NAOS_FIT_MKIMAGE NAOS_FIT_CHECK_SIGN NAOS_FIT_KEY_DTB NAOS_SECURE_BOOT_KEY_DIR NAOS_RESOURCE_FILE NAOS_SBOM"
+do_assemble[depends] += "${@'kernel-devsrc:do_deploy' if d.getVar('NAOS_BUILD_MODE') == 'development' else ''}"
+do_assemble[vardeps] += "NAOS_BUILD_MODE NAOS_VERSION NAOS_BUILD_ID NAOS_LAYOUT_FILE NAOS_OTA_OVERLAY NAOS_OTA_KEYRING NAOS_SECURE_BOOT NAOS_FIT_BUILDER NAOS_FIT_MKIMAGE NAOS_FIT_CHECK_SIGN NAOS_FIT_KEY_DTB NAOS_SECURE_BOOT_KEY_DIR NAOS_RESOURCE_FILE NAOS_SBOM"
 addtask assemble after do_unpack do_prepare_recipe_sysroot before do_deploy
 
 python __anonymous() {

@@ -37,6 +37,7 @@ python do_package_inputs() {
 }
 do_package_inputs[cleandirs] = "${NAOS_PACKAGE_ROOTFS_OUTPUT}"
 do_package_inputs[depends] = "naos-alpine-rootfs:do_deploy virtual/kernel:do_deploy rauc:do_deploy rauc-hawkbit-updater:do_deploy naos-core:do_deploy naos-container:do_deploy ${NAOS_PACKAGE_INITRAMFS_RECIPE}:do_image_complete"
+do_package_inputs[depends] += "${@'kernel-devsrc:do_deploy' if d.getVar('NAOS_BUILD_MODE') == 'development' else ''}"
 do_package_inputs[depends] += "${@' '.join(pn + ':do_naos_sbom_component' for pn in d.getVar('NAOS_PACKAGE_COMPONENT_RECIPES').split()) if d.getVar('NAOS_SBOM') == '1' else ''}"
 do_package_inputs[recrdeptask] = "${@'do_naos_sbom_component' if d.getVar('NAOS_SBOM') == '1' else ''}"
 do_package_inputs[file-checksums] = "${NAOS_PACKAGE_LAYER_DIR}/lib/naos_package/rootfs.py:True ${NAOS_PACKAGE_LAYER_DIR}/lib/naos_package/sbom.py:True ${NAOS_PACKAGE_LAYOUT_FILE}:True ${NAOS_OTA_KEYRING}:True"

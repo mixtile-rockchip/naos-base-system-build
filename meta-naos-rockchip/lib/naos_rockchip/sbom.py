@@ -171,6 +171,12 @@ def _kernel(data, d, outdir):
     data["modules"] = sorted(modules, key=lambda item: item["path"])
     data["module_archive"] = _deploy_record(deploy, archive_name)
     data["artifacts"] = [_deploy_record(deploy, path) for path in dict.fromkeys(paths)]
+    if d.getVar("NAOS_BUILD_MODE") == "development":
+        module_dir = _relative((d.getVar("nonarch_base_libdir") or "/lib").strip("/")
+                               + "/modules/" + release)
+        data.setdefault("payload_paths", []).extend((module_dir + "/build",
+                                                    module_dir + "/source",
+                                                    "usr/src/kernel"))
 
 
 def _ini(path):
