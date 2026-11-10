@@ -86,8 +86,8 @@ The build script stages File variables in a private temporary directory outside
 the checkout and removes that directory on exit. Key files are not CI artifacts.
 
 Caches
-  DL_DIR defaults to /cache/yocto/${CI_PROJECT_ID}/downloads.
-  SSTATE_DIR defaults to /cache/yocto/${CI_PROJECT_ID}/sstate-cache.
+  DL_DIR defaults to /cache/naos-yocto/${CI_PROJECT_ID}/downloads.
+  SSTATE_DIR defaults to /cache/naos-yocto/${CI_PROJECT_ID}/sstate-cache.
   Set either variable to override its default. Build work stays in the job checkout.
 
 Artifacts contain only firmware, OTA bundles, SBOM files and image-generator

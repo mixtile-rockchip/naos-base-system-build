@@ -16,8 +16,8 @@ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 
 : "${CI_PROJECT_ID:?CI_PROJECT_ID is required for the shared cache namespace}"
-export DL_DIR="${DL_DIR:-/cache/yocto/${CI_PROJECT_ID}/downloads}"
-export SSTATE_DIR="${SSTATE_DIR:-/cache/yocto/${CI_PROJECT_ID}/sstate-cache}"
+export DL_DIR="${DL_DIR:-/cache/naos-yocto/${CI_PROJECT_ID}/downloads}"
+export SSTATE_DIR="${SSTATE_DIR:-/cache/naos-yocto/${CI_PROJECT_ID}/sstate-cache}"
 if ! mkdir -p -- "$DL_DIR" "$SSTATE_DIR"; then
     printf '%s\n' "Cannot create Yocto cache directories as UID $(id -u): $DL_DIR, $SSTATE_DIR" >&2
     exit 1
