@@ -89,6 +89,8 @@ Caches
   DL_DIR defaults to /cache/naos-yocto/${CI_PROJECT_ID}/downloads.
   SSTATE_DIR defaults to /cache/naos-yocto/${CI_PROJECT_ID}/sstate-cache.
   Set either variable to override its default. Build work stays in the job checkout.
+  KAS_CLONE_DEPTH defaults to 1 for shallow layer repository checkouts.
+  Their pinned commit IDs remain unchanged.
 
 Artifacts contain only firmware, OTA bundles, SBOM files and image-generator
 exports that the selected build produced. They expire after one week.

@@ -29,6 +29,7 @@ fi
 export MACHINE="${MACHINE:-mixtile-core3588e-v2}"
 export NAOS_OTA="${NAOS_OTA:-0}"
 export NAOS_PACKAGE="${NAOS_PACKAGE:-0}"
+export KAS_CLONE_DEPTH="${KAS_CLONE_DEPTH:-1}"
 
 if [ -n "${CI_COMMIT_TAG:-}" ]; then
     NAOS_VERSION=$(python3 .ci/release-version.py --machine "$MACHINE" --tag "$CI_COMMIT_TAG")
