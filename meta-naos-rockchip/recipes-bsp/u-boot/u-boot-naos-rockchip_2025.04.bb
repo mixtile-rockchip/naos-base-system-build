@@ -92,6 +92,18 @@ naos_uboot_deploy_package() {
     bbfatal "NAOS_PACKAGE requires the naos-package layer"
 }
 
+naos_check_uboot_watchdog_dtb() {
+    # The SDK also filters the main control DTB by boot phase. A linked
+    # watchdog driver cannot autostart if its node was removed by fdtgrep.
+    fdtget -ts ${S}/u-boot.dtb /watchdog@feaf0000 compatible | \
+        grep -qw 'snps,dw-wdt' || bbfatal "The U-Boot control DTB must retain its watchdog node"
+    watchdog_status=$(fdtget -ts ${S}/u-boot.dtb /watchdog@feaf0000 status 2>/dev/null || true)
+    case "$watchdog_status" in
+        ""|ok|okay) ;;
+        *) bbfatal "The U-Boot watchdog node must be enabled" ;;
+    esac
+}
+
 naos_check_uboot_config() {
     # Check resolved values after Kconfig select/default propagation. Disabled
     # dependency-hidden symbols may be absent, but must never resolve to y/m.
@@ -120,9 +132,12 @@ naos_check_uboot_config() {
                   ENV_IS_IN_MMC SYS_REDUNDAND_ENVIRONMENT USE_DEFAULT_ENV_FILE \
                   CMDLINE HUSH_PARSER HUSH_OLD_PARSER CMD_RUN CMD_ITEST \
                   CMD_SETEXPR CMD_PART CMD_MMC CMD_SAVEENV CMD_BOOTM BOOTM_LINUX \
-                  OF_CONTROL OF_REAL OF_LIVE OF_SEPARATE OF_UPSTREAM DM_KERNEL_DTB; do
+                  OF_CONTROL OF_REAL OF_LIVE OF_SEPARATE OF_UPSTREAM DM_KERNEL_DTB \
+                  WDT WDT_ROCKCHIP WATCHDOG WATCHDOG_AUTOSTART CYCLIC; do
         grep -qx "CONFIG_$option=y" ${S}/.config || bbfatal "$option is required"
     done
+    grep -qx 'CONFIG_WATCHDOG_TIMEOUT_MSECS=60000' ${S}/.config || \
+        bbfatal "U-Boot requires a 60-second watchdog startup timeout"
     for option in ANDROID_BOOT_IMAGE ANDROID_AB SPL_AB AVB_VERIFY LIBAVB \
                   LIBAVB_AB LIBAVB_ATX LIBAVB_USER CMD_BOOT_ANDROID \
                   ANDROID_DTBO_SUPPORT ANDROID_BOOT_IMAGE_HASH \
@@ -166,11 +181,13 @@ do_compile() {
     cd ${S}
     if [ "${NAOS_PACKAGE}" = 1 ]; then
         naos_uboot_compile_package
+        naos_check_uboot_watchdog_dtb
         ./tools/mkenvimage -r -s 0x8000 -o naos-uboot-env.bin naos-default.env
         naos_check_uboot_config
         return
     fi
     bash ./make.sh CROSS_COMPILE=${TARGET_PREFIX} ${NAOS_UBOOT_SIGN_ARGS} --spl-new
+    naos_check_uboot_watchdog_dtb
     # A raw SD/eMMC ID block is distinct from the USB Rockchip loader package.
     bash ./make.sh CROSS_COMPILE=${TARGET_PREFIX} --idblock --spl
     naos_uboot_sign_raw_loader

@@ -79,6 +79,10 @@
 	status = "okay";
 };
 
+&wdt {
+	bootph-all;
+};
+
 &u2phy0 {
 	status = "okay";
 };
