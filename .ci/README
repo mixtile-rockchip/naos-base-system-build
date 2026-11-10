@@ -43,7 +43,8 @@ Both packages are published to the same repository directory and index:
 The installed export is at /usr/share/naos/image-inputs/PROFILE/MACHINE.
 APKBUILD uses arch="all"; the current builder produces x86_64 packages for the
 image-generator host. The export's target architecture remains aarch64.
-Each job's APK and package.json are retained in apk-output/PROFILE/.
+Only package.json is retained as the package job's GitLab artifact. APK files
+are published to the repository and are not stored as GitLab artifacts.
 
 The package stage installs Python and the SSH client, builds and verifies the
 APK, signs a merged repository index in CI, then uploads the APK and index over
