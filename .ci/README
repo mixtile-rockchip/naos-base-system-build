@@ -1,6 +1,6 @@
 GitLab CI builds
 
-The first stage has four independent jobs, each with its own artifact archive:
+The first stage has four jobs, each with its own artifact archive:
   build-development-image    Development factory image, NAOS_PACKAGE=0.
   build-development-inputs   Development image-generator inputs, NAOS_PACKAGE=1.
   build-production-image     Production factory image, NAOS_PACKAGE=0.
