@@ -57,6 +57,8 @@ export NAOS_SYSTEM_KEY_DIR="$secret_dir/system-encryption"
 export NAOS_SSH_CA_KEY="$secret_dir/ssh-ca/ssh_ca_key.pub"
 export NAOS_APK_PUBLIC_KEY="$secret_dir/apk-repository/naos-apk.rsa.pub"
 
+# Key files keep their explicit 0600 modes; Yocto requires readable build outputs.
+umask 022
 kas build "kas/${NAOS_PROFILE}.yml"
 
 if [ "$NAOS_PACKAGE" = 0 ]; then
