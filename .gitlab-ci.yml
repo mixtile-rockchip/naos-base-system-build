@@ -58,6 +58,9 @@ build-development-image:
   extends: .yocto-image
   variables:
     NAOS_PROFILE: development
+  needs:
+    - job: build-development-inputs
+      artifacts: false
 
 build-development-inputs:
   extends: .yocto-inputs
@@ -68,6 +71,9 @@ build-production-image:
   extends: .yocto-image
   variables:
     NAOS_PROFILE: production
+  needs:
+    - job: build-production-inputs
+      artifacts: false
 
 build-production-inputs:
   extends: .yocto-inputs

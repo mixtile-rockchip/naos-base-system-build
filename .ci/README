@@ -11,6 +11,8 @@ Jobs in this project are serialized to reuse its Yocto downloads and sstate
 cache. Only a numeric MACHINE-X.Y.Z release tag creates a pipeline and starts
 all four jobs automatically; the tag helper verifies the selected MACHINE.
 Branch pushes do not create pipelines.
+Each image job waits for the matching inputs job and reuses the Yocto caches.
+It does not download the input artifact archive.
 
 The second stage has package-development and package-production. Each downloads
 only its matching inputs job's artifacts, not either factory image archive.
