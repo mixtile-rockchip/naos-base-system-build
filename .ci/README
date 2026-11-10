@@ -48,20 +48,18 @@ APKBUILD uses arch="all"; the current builder produces x86_64 packages for the
 image-generator host. The export's target architecture remains aarch64.
 Package jobs publish APKs to the repository and do not retain GitLab artifacts.
 
-The package stage installs Python and the SSH client, builds and verifies the
-APK, signs a merged repository index in CI, then uploads the APK and index over
-SSH. The server stores the public verification key and publishes the update
-atomically; the signing private key remains in CI. Publication checks for
-concurrent updates to the common repository index.
+The package stage uses Python to build the APK, then uploads that signed APK
+with .ci/publish-apk.sh over SSH. The server runs apk index and signs the new
+index with the same repository key, then replaces APKINDEX.tar.gz atomically.
+Uploads share a lock. All package versions are retained.
 
 Repository variables
-  NAOS_APK_REPOSITORY_URL  https://packages.naos.ai/repository
   NAOS_APK_SSH_HOST        56.10.200.210
   NAOS_APK_SSH_USER        ubuntu
 
-The repository variable is the HTTP base address. The publisher appends the
-architecture; do not append a profile to NAOS_APK_REPOSITORY_URL.
 The public verification key is at https://packages.naos.ai/keys/naos-apk.rsa.pub.
+The server receiver is .ci/apk-repository-upload.sh. Its signing key is stored
+outside the web root at /var/lib/naos-apk/signing/naos-apk.rsa, mode 0600.
 https://www.mixtile.com is the APKBUILD homepage, not the repository endpoint.
 
 CI/CD File variables

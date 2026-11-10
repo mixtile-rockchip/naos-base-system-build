@@ -31,13 +31,9 @@ python3 .ci/build-apk.py \
     --public-key "$NAOS_CI_APK_SIGNING_PUBLIC_KEY" \
     --version "$apk_version"
 
-python3 .ci/publish-apk.py \
-    --output-dir "apk-output/$NAOS_PROFILE" \
-    --repository-url "${NAOS_APK_REPOSITORY_URL:-https://packages.naos.ai/repository}" \
-    --ssh-host "${NAOS_APK_SSH_HOST:-56.10.200.210}" \
-    --ssh-user "${NAOS_APK_SSH_USER:-ubuntu}" \
-    --ssh-key "$NAOS_CI_APK_SSH_PRIVATE_KEY" \
-    --known-hosts "$NAOS_CI_APK_SSH_KNOWN_HOSTS" \
-    --signing-key "$NAOS_CI_APK_SIGNING_KEY" \
-    --public-key "$NAOS_CI_APK_SIGNING_PUBLIC_KEY" \
-    --arch x86_64
+set -- "apk-output/$NAOS_PROFILE/"*.apk
+if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+    printf '%s\n' 'Expected exactly one built APK' >&2
+    exit 1
+fi
+sh .ci/publish-apk.sh --apk "$1"
