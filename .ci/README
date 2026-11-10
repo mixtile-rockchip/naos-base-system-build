@@ -8,8 +8,9 @@ The first stage has four independent jobs, each with its own artifact archive:
 
 They use the yocto runner and yocto-runner:ubuntu-24.04-kas as a non-root user.
 Jobs in this project are serialized to reuse its Yocto downloads and sstate
-cache. On a branch, run the desired jobs manually. A numeric release tag starts
+cache. Only a numeric MACHINE-X.Y.Z release tag creates a pipeline and starts
 all four jobs automatically; the tag helper verifies the selected MACHINE.
+Branch pushes do not create pipelines.
 
 The second stage has package-development and package-production. Each downloads
 only its matching inputs job's artifacts, not either factory image archive.
@@ -43,8 +44,7 @@ Both packages are published to the same repository directory and index:
 The installed export is at /usr/share/naos/image-inputs/PROFILE/MACHINE.
 APKBUILD uses arch="all"; the current builder produces x86_64 packages for the
 image-generator host. The export's target architecture remains aarch64.
-Only package.json is retained as the package job's GitLab artifact. APK files
-are published to the repository and are not stored as GitLab artifacts.
+Package jobs publish APKs to the repository and do not retain GitLab artifacts.
 
 The package stage installs Python and the SSH client, builds and verifies the
 APK, signs a merged repository index in CI, then uploads the APK and index over
