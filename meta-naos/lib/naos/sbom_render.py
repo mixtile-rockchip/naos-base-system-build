@@ -127,6 +127,7 @@ class _Graph:
         self.license_list_version = license_list_version
         self.objects = {}
         self.unknown_licenses = []
+        self.vulnerability_assessments = 0
         self.creation = spdx.CreationInfo(
             _id=self.identifier("creation", epoch),
             created=datetime.fromtimestamp(int(epoch), timezone.utc), specVersion="3.0.1")
@@ -201,6 +202,44 @@ class _Graph:
             _id=self.identifier("relationship", identity), creationInfo=self.creation,
             from_=source, relationshipType=getattr(spdx.RelationshipType, kind),
             to=targets, **({"comment": comment} if comment else {})))
+
+    def cve_assessments(self, owner, assessments):
+        """Attach declared recipe assessments to their actual product component."""
+        kinds = {
+            "Patched": (spdx.security_VexFixedVulnAssessmentRelationship, "fixedIn"),
+            "Unpatched": (spdx.security_VexAffectedVulnAssessmentRelationship, "affects"),
+            "Ignored": (spdx.security_VexNotAffectedVulnAssessmentRelationship, "doesNotAffect"),
+            "Unknown": (spdx.security_VexUnderInvestigationVulnAssessmentRelationship, "underInvestigationFor"),
+        }
+        if not isinstance(assessments, dict):
+            raise ValueError("Component CVE assessments must be a mapping")
+        for cve, assessment in sorted(assessments.items()):
+            if not re.fullmatch(r"CVE-[0-9]{4}-[0-9]{4,}", cve) or not isinstance(assessment, dict):
+                raise ValueError("Invalid component CVE assessment")
+            status = assessment.get("status")
+            if status not in kinds:
+                raise ValueError("Unsupported CVE status: " + str(status))
+            vulnerability = self.add(spdx.security_Vulnerability(
+                _id=self.identifier("vulnerability", cve), name=cve, creationInfo=self.creation,
+                externalIdentifier=[spdx.ExternalIdentifier(
+                    externalIdentifierType=spdx.ExternalIdentifierType.cve, identifier=cve,
+                    identifierLocator=["https://www.cve.org/CVERecord?id=" + cve])]))
+            notes = ": ".join(value for value in (assessment.get("detail"), assessment.get("description")) if value)
+            cls, relation = kinds[status]
+            extra = {}
+            if status == "Unpatched":
+                extra['security_actionStatement'] = "Mitigation action not specified by recipe metadata"
+            elif status == "Ignored":
+                extra['security_impactStatement'] = notes or "Ignored by recipe metadata"
+            if assessment.get("patches"):
+                patches = [_path(path) for path in assessment["patches"]]
+                extra['comment'] = _json({"patches": patches})
+            self.add(cls(
+                _id=self.identifier("vex-assessment", [owner._id, cve, assessment]),
+                creationInfo=self.creation, from_=vulnerability, to=[owner],
+                relationshipType=getattr(spdx.RelationshipType, relation),
+                security_vexVersion="1.0.0", security_statusNotes=notes, **extra))
+            self.vulnerability_assessments += 1
 
     def license(self, owner, expression, texts, raw=None):
         if not expression or str(expression).upper() in ("CLOSED", "NONE", "NOASSERTION", "UNKNOWN"):
@@ -516,6 +555,7 @@ def render_product(inventory: dict, components: list[dict], artifacts: dict, out
                             version=component.get("version"), homepage=component.get("homepage"),
                             purpose=purpose, comment=_json(details))
         component_nodes.append(pkg)
+        graph.cve_assessments(pkg, component.get("cve_status", {}))
         texts = component.get("license_texts", {})
         if not release:
             graph.license(pkg, component.get("license_expression"), texts, component.get("license"))
@@ -653,7 +693,8 @@ def render_product(inventory: dict, components: list[dict], artifacts: dict, out
     doc = graph.add(spdx.SpdxDocument(
         _id=graph.identifier("document", [machine, version, build_id]), name="NAOS " + str(version) + " " + str(machine),
         creationInfo=graph.creation, dataLicense=document_license, rootElement=[bom],
-        profileConformance=[spdx.ProfileIdentifierType.core, spdx.ProfileIdentifierType.software, spdx.ProfileIdentifierType.simpleLicensing]))
+        profileConformance=[spdx.ProfileIdentifierType.core, spdx.ProfileIdentifierType.software, spdx.ProfileIdentifierType.simpleLicensing]
+                           + ([spdx.ProfileIdentifierType.security] if graph.vulnerability_assessments else [])))
     elements = [obj for obj in graph.objects.values() if isinstance(obj, spdx.Element) and obj is not doc]
     doc.element = sorted(elements, key=lambda obj: obj._id)
     bom.element = [obj for obj in doc.element if obj is not bom]
@@ -689,5 +730,6 @@ def render_product(inventory: dict, components: list[dict], artifacts: dict, out
             "opaque_firmware_roles": sorted(opaque_firmware), "static_go_dependency_packages": len(static_go_dependencies),
             "release_sbom_components": release_components, "release_dependency_packages": len(release_dependencies),
             "release_verified_payload_files": release_verified_files,
+            "vulnerability_assessments": graph.vulnerability_assessments,
             "limitations": limitations,
             "roundtrip_references_closed": True}

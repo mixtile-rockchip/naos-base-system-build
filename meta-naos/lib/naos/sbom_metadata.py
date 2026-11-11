@@ -208,6 +208,30 @@ def initramfs_metadata(d, result):
                             'size':archive.stat().st_size}]
 
 
+def cve_status(d):
+    """Export recipe assessments, without scanning a vulnerability database."""
+    import oe.cve_check
+
+    scope = d.getVar('SPDX_INCLUDE_VEX') or 'current'
+    if scope not in ('none', 'current', 'all'):
+        raise ValueError('SPDX_INCLUDE_VEX must be none, current or all')
+    if scope == 'none':
+        return {}
+    result = {}
+    for cve, assessment in sorted(oe.cve_check.get_patched_cves(d).items()):
+        detail = assessment['status']
+        # Match the native SPDX policy for already-fixed upstream versions.
+        if scope != 'all' and detail in ('fixed-version', 'cpe-stable-backport'):
+            continue
+        value = {'status': assessment['abbrev-status'], 'detail': detail,
+                 'description': assessment.get('justification') or ''}
+        if assessment.get('resource'):
+            # Patch resources contain WORKDIR paths in OE's internal metadata.
+            value['patches'] = sorted({Path(path).name for path in assessment['resource']})
+        result[cve] = value
+    return result
+
+
 def base_component(d):
     pn = d.getVar('PN')
     declared = d.getVar('LICENSE') or ''
@@ -216,6 +240,9 @@ def base_component(d):
               'homepage':d.getVar('HOMEPAGE') or '', 'sources':sources(d),
               'payload_paths':[], 'cve_product':d.getVar('CVE_PRODUCT') or ''}
     result.update(license_info(declared, d))
+    assessments = cve_status(d)
+    if assessments:
+        result['cve_status'] = assessments
     return result
 
 

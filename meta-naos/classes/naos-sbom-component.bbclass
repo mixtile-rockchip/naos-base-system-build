@@ -17,7 +17,7 @@ do_naos_sbom_component[stamp-extra-info] = "${MACHINE}"
 do_naos_sbom_component[sstate-inputdirs] = "${NAOS_SBOM_COMPONENT_OUTPUT}"
 do_naos_sbom_component[sstate-outputdirs] = "${DEPLOY_DIR_IMAGE}/sbom-inputs"
 do_naos_sbom_component[file-checksums] = "${@naos.sbom_metadata.dependencies(d)}"
-do_naos_sbom_component[vardeps] += "PN BPN PV LICENSE HOMEPAGE SRC_URI CVE_PRODUCT IMAGE_LINK_NAME NAOS_SBOM NAOS_SBOM_PREEXPORTED NAOS_SBOM_COMPONENT_EXTENSION NAOS_SBOM_EXTENSION_DIR DEPLOY_DIR_IMAGE PKGDATA_DIR"
+do_naos_sbom_component[vardeps] += "PN BPN PV LICENSE HOMEPAGE SRC_URI CVE_PRODUCT CVE_STATUS CVE_CHECK_STATUSMAP SPDX_INCLUDE_VEX IMAGE_LINK_NAME NAOS_SBOM NAOS_SBOM_PREEXPORTED NAOS_SBOM_COMPONENT_EXTENSION NAOS_SBOM_EXTENSION_DIR DEPLOY_DIR_IMAGE PKGDATA_DIR"
 
 python do_naos_sbom_component_setscene() {
     sstate_setscene(d)

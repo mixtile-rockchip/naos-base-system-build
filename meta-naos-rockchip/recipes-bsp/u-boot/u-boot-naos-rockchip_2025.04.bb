@@ -5,7 +5,10 @@ LIC_FILES_CHKSUM = "file://Licenses/README;md5=2ca5f2c35c8cc335f0a19756634782f1 
 PROVIDES = "virtual/bootloader"
 CVE_PRODUCT = "u-boot:u-boot denx:u-boot"
 
-inherit deploy python3native pkgconfig naos-shallow-git naos-rockchip-sbom
+inherit deploy python3native pkgconfig naos-shallow-git naos-rockchip-sbom naos-cve-status
+
+NAOS_CVE_STATUS_FILE := "${THISDIR}/u-boot-naos-rockchip-cve.ini"
+NAOS_CVE_STATUS_REVISION = "${SRCREV_uboot}"
 
 DEPENDS = "bc-native bison-native flex-native dtc-native openssl-native \
            python3-pyelftools-native python3-setuptools-native swig-native xxd-native"

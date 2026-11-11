@@ -2,7 +2,9 @@ SUMMARY = "NAOS Rockchip vendor Linux kernel for Mixtile Core3588E v2 Nano"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 
-inherit kernel naos-shallow-git naos-rockchip-sbom
+inherit kernel naos-shallow-git naos-rockchip-sbom naos-cve-status
+
+NAOS_CVE_STATUS_FILE := "${THISDIR}/linux-naos-rockchip-cve.ini"
 
 DEPENDS += "bc-native bison-native flex-native openssl-native elfutils-native"
 # Common board artwork is independent of the optional secure-boot layer.
