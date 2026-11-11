@@ -17,10 +17,12 @@
 /core/
 /image-generator/
 /security-tool/
-/doc/
+/local-doc/
 /my-doc/
 /tools/
 *.md
+!/README.md
+!/doc/**
 /*.img
 /*.raucb
 /.agents/
