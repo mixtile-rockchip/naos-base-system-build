@@ -4,6 +4,6 @@
 
 /* Only these values may replace built-in defaults when importing MMC env. */
 #define CFG_ENV_FLAGS_LIST_STATIC \
-    "BOOT_ORDER:sw,BOOT_A_LEFT:dw,BOOT_B_LEFT:dw"
+    "BOOT_ORDER:sw,BOOT_A_LEFT:xw,BOOT_B_LEFT:xw"
 
 #endif
