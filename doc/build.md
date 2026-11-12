@@ -1,12 +1,14 @@
-# 构建 NAOS
+# Building NAOS
 
-[返回项目首页](../README.md) · [文档目录](README.md)
+**English** | [简体中文](build.zh-CN.md)
 
-## 准备主机
+[Project home](../README.md) · [Documentation](README.md)
 
-推荐使用 Ubuntu 24.04 x86_64、Python 3.11 或更新版本，并安装支持配置格式 14 的 kas。使用普通用户运行 kas 和 BitBake。
+## Prepare the host
 
-可通过 Ubuntu 软件源安装基础依赖：
+Ubuntu 24.04 x86_64 with Python 3.11 or newer is recommended. Install a version of kas that supports configuration format 14. Run kas and BitBake as a regular user.
+
+Install the basic dependencies from the Ubuntu package repositories:
 
 ```bash
 sudo apt-get update
@@ -18,127 +20,127 @@ sudo locale-gen en_US.UTF-8
 export LANG=en_US.UTF-8
 ```
 
-主机还须允许非特权用户创建命名空间，并能通过 QEMU/binfmt 执行目标架构的程序：
+The host must also allow unprivileged users to create namespaces and execute programs for the target architecture through QEMU/binfmt:
 
-- Alpine 系统组装使用用户、挂载和 IPC 命名空间；普通主机还使用 PID 命名空间。
-- QEMU/binfmt 注册项须匹配目标架构、处于启用状态并包含 `F` 标志。当前 Mixtile Core3588E 构建使用 ARM64；仅安装 QEMU 文件不足以确认支持可用。
-- 在容器中构建时也需要满足这些条件，构建用户须能读写工作目录和缓存目录。
+- Alpine system assembly uses user, mount and IPC namespaces; on a regular host, it also uses a PID namespace.
+- The QEMU/binfmt registration must match the target architecture, be enabled and include the `F` flag. Current Mixtile Core3588E builds use ARM64. Installing the QEMU files alone does not confirm that target execution works.
+- These requirements also apply when building in a container. The build user must have read and write access to the working directory and cache directories.
 
-可以先检查命名空间：
+Check namespace support first:
 
 ```bash
 unshare --user --map-root-user --mount --ipc --pid --fork --mount-proc true
 ```
 
-如果提示权限不足，检查构建环境的用户命名空间与安全策略。不要改用 root 运行 BitBake 来绕过检查。
+If the command reports a permission error, check the build environment's user namespace settings and security policy. Do not run BitBake as root to bypass the check.
 
-## 获取工程
+## Get the project
 
 ```bash
 git clone https://github.com/mixtile-rockchip/naos-yocto.git
 cd naos-yocto
 ```
 
-kas 自动获取构建层。BSP、安全工具使用远端 Git 的固定提交；Core 和 Container 使用固定版本与摘要的发布归档。构建不要求准备本地厂商 SDK，也不需要在本仓库编译 Core 或 Container。
+kas fetches the build layers automatically. The BSP and security tools use pinned commits from remote Git repositories; Core and Container use release archives with fixed versions and checksums. A local vendor SDK is not required, and Core and Container do not need to be compiled in this repository.
 
-构建前按[密钥与证书](keys.md)准备当前模式所需材料。
+Before building, prepare the materials required for your build mode as described in [Keys and certificates](keys.md).
 
-## 选择板型与版本
+## Select the board and version
 
-当前支持的核心板及对应构建名称：
+The currently supported core module and its build name are:
 
-- **Mixtile Core3588E**：`mixtile-core3588e-v2`
+- **Mixtile Core3588E**:`mixtile-core3588e-v2`
 
-通过 `MACHINE` 选择板型：
+Select the board through `MACHINE`:
 
 ```bash
 export MACHINE=mixtile-core3588e-v2
 ```
 
-不设置时也使用该板型。后续板型须有对应 machine 配置，不能仅修改名称。
+This board is also the default. Additional boards need a corresponding machine configuration; changing the name alone is not sufficient.
 
-可为一次构建设置发布版本和构建标识：
+You can set a release version and build identifier for a build:
 
 ```bash
 export NAOS_VERSION=1.0.0
 export NAOS_BUILD_ID=release-1.0.0
 ```
 
-未设置时，默认版本为 `2.0.0-dev`，构建标识沿用版本。设备版本信息、升级包和发布清单会记录这些值。
+When unset, the version defaults to `2.0.0-dev` and the build identifier uses the version. Device version information, update bundles and release manifests record these values.
 
-## 开发版与量产版
+## Development and production
 
-开发版完整固件：
+Build a complete development image:
 
 ```bash
 kas build kas/development.yml
 ```
 
-量产版完整固件：
+Build a complete production image:
 
 ```bash
 kas build kas/production.yml
 ```
 
-开发版默认关闭安全启动和磁盘加密，保留 RAUC 更新包验签。量产版默认开启安全启动、system 与 userdata 加密、SBOM，并采用证书 SSH 登录和仅输出日志的串口策略。
+Development builds disable secure boot and disk encryption by default while retaining RAUC update signature verification. Production builds enable secure boot, system and userdata encryption, and SBOM generation by default. They use SSH certificate authentication and a serial console that only outputs logs.
 
-## 生成升级包
+## Generate update bundles
 
-启用 `NAOS_OTA=1` 后，完整固件之外会同时生成系统包和 Bootloader 包：
+Set `NAOS_OTA=1` to generate both system and Bootloader update bundles alongside the complete image:
 
 ```bash
 NAOS_OTA=1 kas build kas/development.yml
 NAOS_OTA=1 kas build kas/production.yml
 ```
 
-只有生成升级包时才需要 OTA 签名私钥。普通完整固件构建仍需 OTA 验签证书。
+The OTA signing private key is required only when generating update bundles. A normal complete image build still requires the OTA verification certificate.
 
-## 导出镜像生成器产物
+## Export image generator inputs
 
 ```bash
 NAOS_PACKAGE=1 kas build kas/development.yml
 NAOS_PACKAGE=1 kas build kas/production.yml
 ```
 
-此模式生成供独立镜像生成器使用的中间产物；最终镜像加密、启动签名和 OTA 打包由镜像生成器完成。它不会同时生成完整固件或最终 OTA 包。
+This mode exports intermediate inputs for the standalone image generator, which performs final image encryption, boot signing and OTA packaging. It does not also generate complete firmware or final OTA bundles.
 
-输出目录：
+Output directories:
 
 ```text
 package/development/mixtile-core3588e-v2/
 package/production/mixtile-core3588e-v2/
 ```
 
-导出仍需 OTA 验签证书；量产模式还需 SSH CA 公钥。用于最终组装的启动签名私钥、系统加密密钥和 OTA 签名私钥在镜像生成器中准备。
+Exports still require the OTA verification certificate; production exports also require the SSH CA public key. Prepare the boot signing private key, system encryption key and OTA signing private key in the image generator for final assembly.
 
-## 功能开关
+## Feature switches
 
-布尔开关使用 `0` 或 `1`。环境变量覆盖所选 kas 配置的默认值。
+Boolean switches accept `0` or `1`. Environment variables override the defaults in the selected kas configuration.
 
-| 环境变量 | 开发版默认 | 量产版默认 | 用途 |
+| Environment variable | Development default | Production default | Purpose |
 | --- | --- | --- | --- |
-| `NAOS_OTA` | `0` | `0` | 同时生成系统、Bootloader 两种升级包 |
-| `NAOS_PACKAGE` | `0` | `0` | 导出镜像生成器中间产物 |
-| `NAOS_SBOM` | `0` | `1` | 生成软件物料清单 |
-| `NAOS_SECURE_BOOT` | `0` | `1` | 签名并校验启动镜像 |
-| `NAOS_DISK_ENCRYPTION` | `0` | `1` | 同时启用 system、userdata 加密 |
-| `NAOS_SYSTEM_ENCRYPTION` | 跟随磁盘加密开关 | 跟随磁盘加密开关 | 单独选择 system 加密 |
-| `NAOS_DATA_ENCRYPTION` | 跟随磁盘加密开关 | 跟随磁盘加密开关 | 单独选择 userdata 加密 |
-| `NAOS_SECURE_BOOT_BURN_KEY_HASH` | `0` | `0` | 使生成的 SPL 在设备上烧写 OTP/eFuse 公钥哈希 |
+| `NAOS_OTA` | `0` | `0` | Generate both system and Bootloader update bundles |
+| `NAOS_PACKAGE` | `0` | `0` | Export image generator inputs |
+| `NAOS_SBOM` | `0` | `1` | Generate a software bill of materials |
+| `NAOS_SECURE_BOOT` | `0` | `1` | Sign and verify boot images |
+| `NAOS_DISK_ENCRYPTION` | `0` | `1` | Enable both system and userdata encryption |
+| `NAOS_SYSTEM_ENCRYPTION` | Follows the disk encryption switch | Follows the disk encryption switch | Select system encryption independently |
+| `NAOS_DATA_ENCRYPTION` | Follows the disk encryption switch | Follows the disk encryption switch | Select userdata encryption independently |
+| `NAOS_SECURE_BOOT_BURN_KEY_HASH` | `0` | `0` | Make the generated SPL program the OTP/eFuse public-key hash on the device |
 
-安全启动、磁盘加密及 OTP/eFuse 功能需要对应板型支持。当前 Mixtile Core3588E 适配中，system 加密需要同时启用 userdata 加密；OTP/eFuse 开关仅在量产配置和安全启动均开启时有效，默认保持关闭。相关材料见[密钥与证书](keys.md#otpefuse-公钥哈希)。
+Secure boot, disk encryption and OTP/eFuse require board support. In the current Mixtile Core3588E implementation, system encryption also requires userdata encryption. The OTP/eFuse switch is valid only with both the production configuration and secure boot enabled, and remains disabled by default. See [Keys and certificates](keys.md#otpefuse-public-key-hash) for the required materials.
 
-例如，为开发版额外生成 SBOM：
+For example, generate an SBOM for a development build:
 
 ```bash
 NAOS_SBOM=1 kas build kas/development.yml
 ```
 
-## 缓存与重复构建
+## Caches and repeat builds
 
-默认下载缓存为工程目录下的 `downloads/`，共享构建缓存为 `sstate-cache/`。保留这两个目录可供后续构建复用。
+The download cache defaults to `downloads/` in the project directory, and the shared build cache is `sstate-cache/`. Keep these directories to reuse them in subsequent builds.
 
-可以独立指定其他位置，目录须由构建用户读写：
+You can set either location independently. The build user must have read and write access to the directories:
 
 ```bash
 export DL_DIR="$HOME/.cache/naos/downloads"
@@ -147,24 +149,24 @@ mkdir -p "$DL_DIR" "$SSTATE_DIR"
 kas build kas/development.yml
 ```
 
-源码和输出分别位于 `sources/`、`build/`，不需要因为再次构建而删除它们。
+Sources and build outputs are stored in `sources/` and `build/`, respectively. You do not need to delete them before another build.
 
-## 获取构建结果
+## Build output
 
-普通构建的输出位于 `build/tmp/deploy/images/$MACHINE/`：
+Normal build outputs are in `build/tmp/deploy/images/$MACHINE/`:
 
-| 文件 | 用途 |
+| File | Purpose |
 | --- | --- |
-| `naos-$MACHINE.img` | 完整烧录固件 |
+| `naos-$MACHINE.img` | Complete firmware image for flashing |
 | `MiniLoaderAll.bin` | Rockchip USB Loader |
-| `partition-layout.json`、`manifest.json` | 分区与产物信息 |
-| `naos-bundle-$MACHINE-$NAOS_VERSION.raucb` | 系统、内核和 ramdisk 升级包；开启 OTA 时生成 |
-| `naos-bootloader-bundle-$MACHINE-$NAOS_VERSION.raucb` | Bootloader 升级包；开启 OTA 时生成 |
-| `naos-*.spdx.json`、`naos-*.sbom.json` | SBOM 及摘要；开启 SBOM 时生成 |
-| `naos-*.kernel.config`、`naos-*.uboot.config` | 对应构建配置；开启 SBOM 时生成 |
+| `partition-layout.json`, `manifest.json` | Partition layout and artifact information |
+| `naos-bundle-$MACHINE-$NAOS_VERSION.raucb` | System, kernel and ramdisk update bundle; generated when OTA is enabled |
+| `naos-bootloader-bundle-$MACHINE-$NAOS_VERSION.raucb` | Bootloader update bundle; generated when OTA is enabled |
+| `naos-*.spdx.json`, `naos-*.sbom.json` | SBOM and summary; generated when SBOM is enabled |
+| `naos-*.kernel.config`, `naos-*.uboot.config` | Corresponding build configurations; generated when SBOM is enabled |
 
-系统升级使用 `.raucb` 包，完整 `.img` 用于烧录。安装方法见[升级与恢复](updates.md)。
+Use `.raucb` bundles for system updates and the complete `.img` for flashing. See [Updates and recovery](updates.md) for installation instructions.
 
-## 获取已发布版本
+## Use a published version
 
-无需自行构建时，可通过[镜像生成器](https://github.com/mixtile-rockchip/naos-genimage)选择已发布版本并生成固件。发布产物仓库为 `https://packages.naos.ai/repository`。
+To generate firmware without building it yourself, select a published version in the [image generator](https://github.com/mixtile-rockchip/naos-genimage). Published artifacts are available from `https://packages.naos.ai/repository`.

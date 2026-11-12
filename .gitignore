@@ -23,6 +23,7 @@
 /tools/
 *.md
 !/README.md
+!/README.zh-CN.md
 !/doc/**
 /*.img
 /*.raucb

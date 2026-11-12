@@ -1,23 +1,25 @@
-# NAOS 用户文档
+# NAOS user documentation
 
-[返回项目首页](../README.md)
+**English** | [简体中文](README.zh-CN.md)
 
-## 开始使用
+[Project home](../README.md)
 
-| 需要完成的操作 | 文档 |
+## Get started
+
+| Task | Documentation |
 | --- | --- |
-| 无需编译，生成固件快速体验 | [镜像生成器](https://github.com/mixtile-rockchip/naos-genimage) |
-| 准备主机，构建开发版或量产版 | [构建说明](build.md) |
-| 准备 OTA、安全启动、加密与登录材料 | [密钥与证书](keys.md) |
-| 登录设备，配置 Core、容器业务和局域网服务 | [系统使用](runtime.md) |
-| 本地升级、云端升级、查看槽位和恢复出厂 | [升级与恢复](updates.md) |
+| Generate firmware and try NAOS without compiling | [Image generator](https://github.com/mixtile-rockchip/naos-genimage) |
+| Prepare a host and build development or production images | [Build guide](build.md) |
+| Prepare OTA, secure boot, encryption, and login material | [Keys and certificates](keys.md) |
+| Log in and configure Core, container applications, and local network services | [Runtime guide](runtime.md) |
+| Install local or cloud updates, inspect slots, and reset the device | [Updates and recovery](updates.md) |
 
-初次构建建议先使用开发版。准备好量产密钥及登录证书后，再构建和部署量产版。
+Start with a development image for your first build. Prepare the production keys and login certificates before building and deploying a production image.
 
-## 选择构建方式
+## Choose a build method
 
-**Yocto 构建**适合修改 BSP、内核配置、基础包集或系统集成。使用根目录的两个 kas 入口，详见[构建说明](build.md)。
+**Yocto builds** are for changes to the BSP, kernel configuration, base package selection, or system integration. Use the two kas entry points in the project root. See the [build guide](build.md).
 
-**镜像生成器**无需编译系统源码，可选择已发布版本生成固件快速体验，也可定制设备树、配置和应用，详见[独立项目说明](https://github.com/mixtile-rockchip/naos-genimage)。
+The **image generator** uses released components to generate firmware without compiling the system source. It also supports custom device trees, configuration, and applications. See the [independent project](https://github.com/mixtile-rockchip/naos-genimage).
 
-两种方式都可以生成完整固件和 RAUC 升级包。升级包的签名与设备已安装的信任证书必须匹配，量产启动密钥和系统加密密钥也必须与已有设备保持匹配。
+Both methods can generate full firmware images and RAUC update bundles. Bundle signing keys must match the trust certificate installed on the device. Production boot signing keys and system encryption keys must also remain compatible with existing devices.
