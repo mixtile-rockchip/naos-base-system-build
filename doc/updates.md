@@ -110,7 +110,9 @@ naos-core hawkbit register \
   --token REPLACE_WITH_GATEWAY_TOKEN
 ```
 
-注册成功后，连接信息和设备 ID 保存到同一份 `device.ini`。按需将其中的 `enabled` 设为 `true`，再重启 Core 启用云端更新。
+注册成功后，连接信息和设备 ID 保存到同一份 `device.ini`，并自动设置 `enabled=true`。正在运行的 Core 会直接采用新配置，无需重启服务；如果 updater 正在执行，则等它结束后自动生效。Core 未运行时，配置在下次启动时生效。
+
+Core 会上报当前系统版本、构建标识及基础系统信息。首次连接成功、版本信息变化或平台主动请求设备属性时才发送，普通心跳不重复上传；上报失败会在后续心跳重试。设备详情中的“Current system version”显示设备上报的固件版本，Assigned 和 Installed 继续显示平台分配与确认安装的软件版本。
 
 向 hawkBit 上传与设备匹配的系统或 Bootloader RAUC 包后，由平台分配更新任务。设备使用同一套签名验证和安装流程，Bootloader 包保持当前系统槽。
 
