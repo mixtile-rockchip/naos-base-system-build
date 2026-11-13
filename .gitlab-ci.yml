@@ -34,7 +34,7 @@ variables:
     name: "naos-${NAOS_PROFILE}-image-${MACHINE}-${CI_COMMIT_REF_SLUG}"
     expire_in: 1 week
     paths:
-      - build/tmp/deploy/images/${MACHINE}/naos-${MACHINE}.img.zst
+      - build/tmp/deploy/images/${MACHINE}/naos-${MACHINE}.img.xz
       - build/tmp/deploy/images/${MACHINE}/MiniLoaderAll.bin
       - build/tmp/deploy/images/${MACHINE}/manifest.json
       - build/tmp/deploy/images/${MACHINE}/partition-layout.json

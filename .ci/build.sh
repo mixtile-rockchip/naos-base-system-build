@@ -64,5 +64,5 @@ kas build "kas/${NAOS_PROFILE}.yml"
 
 if [ "$NAOS_PACKAGE" = 0 ]; then
     image="build/tmp/deploy/images/$MACHINE/naos-$MACHINE.img"
-    zstd -T1 --long=28 -3 -q -f "$image" -o "$image.zst"
+    xz -T1 -3 -k -f "$image"
 fi
