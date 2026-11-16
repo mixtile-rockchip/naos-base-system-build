@@ -16,7 +16,7 @@ COMPATIBLE_HOST = "aarch64.*-linux.*"
 
 # The release supplies the binary, dependency notices and service configuration.
 # Source and Go toolchains belong to the independent Core release workflow.
-NAOS_CORE_URI ?= "https://github.com/wushuki/naos-core/releases/download/2026.11.12/naos-core-linux-arm64.tar.gz"
+NAOS_CORE_URI ?= "https://github.com/mixtile-rockchip/naos-core/releases/download/2026.11.12/naos-core-linux-arm64.tar.gz"
 NAOS_CORE_SHA256 ?= "813bd3d807275054a1b704efe0a2e7062eac20df84d035b09b40a8ec3eb4e3c7"
 SRC_URI = "${NAOS_CORE_URI};name=core;subdir=prebuilt"
 S = "${UNPACKDIR}/prebuilt"
