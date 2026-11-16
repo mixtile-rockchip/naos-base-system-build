@@ -5,8 +5,8 @@ LICENSE = "CLOSED"
 inherit deploy nopackages
 
 # Override the URI and checksum together to select another reviewed release.
-NAOS_CONTAINER_URI ?= "https://github.com/mixtile-rockchip/naos-container/releases/download/2026.11.16/naos-alpine-arm64.tar.gz"
-NAOS_CONTAINER_SHA256 ?= "02a7544a1e330258be897fb6b2647814fc975f7e71ac872e62662263360871a3"
+NAOS_CONTAINER_URI ?= "https://github.com/mixtile-rockchip/naos-container/releases/download/2026.11.16.1/naos-alpine-arm64.tar.gz"
+NAOS_CONTAINER_SHA256 ?= "b867e4a6e281a9924985786ab3aedf19e277b60ab13bbb526fb78aa2cc39cfba"
 SRC_URI = "${NAOS_CONTAINER_URI};name=container"
 S = "${UNPACKDIR}/naos-alpine-arm64"
 COMPATIBLE_HOST = "aarch64.*-linux.*"
