@@ -17,7 +17,7 @@ SRC_URI = "${NAOS_RK_KERNEL_URI};destsuffix=kernel \
            file://logo_kernel.bmp \
            file://0001-bcmdhd-use-kbuild-source-directory-for-headers.patch \
            file://0002-bcmdhd-use-relative-build-tag.patch"
-SRCREV = "470f9dccbdc42e7b8a824d0a5c5640a10e9457d2"
+SRCREV = "37a8041e0edc9bb53e60994a875ffee7936f4074"
 S = "${UNPACKDIR}/kernel"
 B = "${WORKDIR}/build"
 COMPATIBLE_MACHINE = "^mixtile-core3588e-v2$"

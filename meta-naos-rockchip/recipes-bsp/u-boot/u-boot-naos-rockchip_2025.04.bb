@@ -22,7 +22,7 @@ SRC_URI = "${NAOS_RK_UBOOT_URI};name=uboot;destsuffix=u-boot \
            file://naos_bootdev.c \
            file://0001-respect-build-parallelism-and-optional-git-identity.patch \
            file://0002-pass-compilers-to-vendor-make.patch"
-SRCREV_uboot = "5b6584f18fc2430cecedbd6890b44be3d63c6879"
+SRCREV_uboot = "4e089dbcabe0520fcc5c2944803d7a454a77ac25"
 SRCREV_rkbin = "3e288fe814e059dd06833495f845cab04ac20a5c"
 SRCREV_FORMAT = "uboot_rkbin"
 S = "${UNPACKDIR}/u-boot"
