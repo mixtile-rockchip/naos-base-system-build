@@ -1,0 +1,12 @@
+Q900 UFS factory flashing
+
+Run Qualcomm QDL 2.9.1 or later from the extracted factory package directory
+with the device in EDL.
+
+On unprovisioned UFS, configure LUNs 0 through 4 first with a provisioning XML
+that matches the board and storage device.
+
+Flash the NAOS system and firmware on LUNs 0 through 4. This resets misc and
+userdata.
+
+    qdl --storage=ufs prog_firehose_ddr.elf rawprogram[0-4].xml patch[0-4].xml

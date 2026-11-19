@@ -2,37 +2,75 @@
 description="NAOS boot confirmation after system and configured business checks"
 
 depend() {
-    need rauc naos-core
+    if [ -r /run/naos/board ] && [ "$(cat /run/naos/board)" = radxa-airbox-q900 ]; then
+        # A service failure must still reach the trial's rollback check.
+        after rauc naos-core
+    else
+        need rauc naos-core
+    fi
     after sshd
+}
+
+confirmation_failed() {
+    eend 1
+    if [ "$q900_boot_state" = trial ]; then
+        ewarn "Rebooting to the last confirmed NAOS slot"
+        /sbin/reboot
+    fi
+    return 1
+}
+
+confirm_rauc_slot() {
+    if [ -n "$q900_boot_state" ]; then
+        # The status RPC checks that Core's local Unix socket can serve requests.
+        busybox timeout 1 /usr/bin/naos-core hawkbit status >/dev/null 2>&1 || return 1
+    fi
+    if [ "$q900_boot_state" = primary ]; then
+        /usr/bin/rauc status >/dev/null
+    else
+        /usr/bin/rauc status mark-good booted
+    fi
 }
 
 start() {
     ebegin "Confirming the NAOS system slot"
+    q900_boot_state=
+    machine=mixtile-core3588e-v2
+    layout=naos-mixtile-core3588e-v2-nano-v1
+    if [ -r /run/naos/board ] && [ "$(cat /run/naos/board)" = radxa-airbox-q900 ]; then
+        machine=radxa-airbox-q900
+        layout=naos-radxa-airbox-q900-ufs-v3
+        rm -f /run/naos/boot-confirmed || { eend 1; return 1; }
+        q900_boot_state=$(/usr/lib/naos/q900-boot boot-state) || { eend 1; return 1; }
+    fi
+
+    version=/run/naos/lower/usr/lib/naos/version.json
     if ! /usr/lib/naos/prepare-slots ||
         ! test -x /sbin/init ||
         ! mountpoint -q /run/naos/lower ||
         ! mountpoint -q /run/naos/data ||
-        ! test -s /run/naos/lower/usr/lib/naos/version.json ||
-        ! grep -q '"machine"[[:space:]]*:[[:space:]]*"mixtile-core3588e-v2"' /run/naos/lower/usr/lib/naos/version.json ||
-        ! grep -q '"layout_compatible"[[:space:]]*:[[:space:]]*"naos-mixtile-core3588e-v2-nano-v1"' /run/naos/lower/usr/lib/naos/version.json; then
-        eend 1
+        ! grep -q "\"machine\"[[:space:]]*:[[:space:]]*\"$machine\"" "$version" ||
+        ! grep -q "\"layout_compatible\"[[:space:]]*:[[:space:]]*\"$layout\"" "$version"; then
+        confirmation_failed
         return 1
     fi
     if ! /usr/bin/naos-core boot-check; then
-        eend 1
+        confirmation_failed
         return 1
     fi
     # supervise-daemon may report the process started before it owns its bus
     # name. Allow service registration to finish before confirming the slot.
     attempts=0
     while [ "$attempts" -lt 30 ]; do
-        if /usr/bin/rauc status mark-good booted; then
+        if confirm_rauc_slot; then
+            if [ -n "$q900_boot_state" ]; then
+                touch /run/naos/boot-confirmed || { eend 1; return 1; }
+            fi
             eend 0
             return 0
         fi
         attempts=$((attempts + 1))
         sleep 1
     done
-    eend 1
-    return 1
+    confirmation_failed
 }

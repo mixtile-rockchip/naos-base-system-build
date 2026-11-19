@@ -1,0 +1,73 @@
+header:
+  version: 14
+  includes:
+    - repo: meta-qcom
+      file: ci/base.yml
+
+build_system: oe
+# AIRbox Q900 is the first supported Qualcomm board.
+machine: radxa-airbox-q900
+target: naos-release
+
+env:
+  NAOS_VERSION: null
+  NAOS_BUILD_ID: null
+  NAOS_OTA: "0"
+  NAOS_OTA_KEY_DIR: null
+  NAOS_Q900_CAPSULE_ROOT: null
+
+repos:
+  naos:
+    path: .
+    layers:
+      meta-naos:
+      meta-naos-qcom:
+  meta-qcom:
+    url: https://github.com/qualcomm-linux/meta-qcom.git
+    path: sources/qcom/official/meta-qcom
+    branch: wrynose
+    commit: 8eaf769b9d92e2ea5041dc9cf14b870b9c564fb6
+  oe-core:
+    path: sources/qcom/oe-core
+    commit: 33a6bd6cc8a9a976902081642414bd67adc74879
+  bitbake:
+    path: sources/qcom/bitbake
+    commit: 6e260eb6ab1631607ea414d9ff8ede1155faa5d9
+  meta-lts-mixins:
+    path: sources/qcom/meta-lts-mixins
+    commit: 71dfb81bd98f59ca2127d39b100ecbb8ce1e0ba3
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded.git
+    path: sources/qcom/meta-openembedded
+    commit: f28a144aa0a0ae05ca2ee91e1aef6aa05f6a12db
+    layers:
+      meta-oe:
+      meta-python:
+      meta-networking:
+      meta-filesystems:
+  meta-rauc:
+    url: https://github.com/rauc/meta-rauc.git
+    path: sources/qcom/meta-rauc
+    commit: 38da0e5866a953e664001ba90b5edad68d68cd5d
+
+local_conf_header:
+  naos-qcom: |
+    BBMULTICONFIG = "qcom-alpine"
+    BB_NUMBER_THREADS = "20"
+    PARALLEL_MAKE = "-j ${BB_NUMBER_THREADS}"
+    ALPINE_ROOTFS_PROCESSORS ?= "${BB_NUMBER_THREADS}"
+    DL_DIR ?= "${NAOS_PROJECT_ROOT}/downloads"
+    SSTATE_DIR ?= "${NAOS_PROJECT_ROOT}/sstate-cache"
+    NAOS_BUILD_MODE = "development"
+    NAOS_VERSION ?= "2.0.0-dev"
+    NAOS_BUILD_ID ?= "${NAOS_VERSION}"
+    # The Alpine development image and its EFI startup do not need OE tests,
+    # desktop libraries, debuginfod or SBOM generation.
+    DISTRO_FEATURES:remove = "debuginfod ptest x11"
+    INHERIT_DISTRO:remove = "create-spdx"
+    # The EFI build uses the BSP distro; these appends require the NAOS musl distro.
+    BBMASK += "/meta-naos/recipes-naos/ota/rauc[^/]*\.bbappend$"
+  naos-qcom-flash: |
+    IMAGE_FSTYPES:append:pn-naos-qcom-image:radxa-airbox-q900 = " qcomflash"
+    IMAGE_CLASSES:append:pn-naos-qcom-image:radxa-airbox-q900 = " naos-q900-qcomflash"
+    NAOS_Q900_SIGN_XBL_CONFIG:radxa-airbox-q900 = "1"

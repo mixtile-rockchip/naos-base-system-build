@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+die() {
+    printf 'NAOS Q900 bundle: %s\n' "$*" >&2
+    exit 1
+}
+
+[ "${1:-}" = slot-install ] && [ "${RAUC_SLOT_STATE:-}" = inactive ] &&
+    [ "${RAUC_SLOT_CLASS:-}" = boot ] && [ "${RAUC_IMAGE_CLASS:-}" = boot ] &&
+    [ "${RAUC_SLOT_TYPE:-}" = raw ] ||
+    die "expected an inactive raw boot slot"
+case "${RAUC_SLOT_NAME:-}:${RAUC_SLOT_PARENT:-}:${RAUC_SLOT_BOOTNAME:-}" in
+    boot.A:rootfs.A:A) target=A; member=naos-q900-a.efi; device=/dev/naos/boot_a; other=/dev/naos/boot_b ;;
+    boot.B:rootfs.B:B) target=B; member=naos-q900-b.efi; device=/dev/naos/boot_b; other=/dev/naos/boot_a ;;
+    *) die "unexpected boot slot" ;;
+esac
+[ "$(cat /run/naos/board)" = radxa-airbox-q900 ] || die "unexpected board"
+IFS= read -r running_slot </run/naos/slot
+case "$running_slot" in A|B) ;; *) die "invalid running slot" ;; esac
+[ "$running_slot" != "$target" ] || die "cannot overwrite the running boot slot"
+[ "${RAUC_SLOT_DEVICE:-}" = "$device" ] && [ -b "$device" ] && [ -b "$other" ] &&
+    [ "$(readlink -f "$device")" != "$(readlink -f "$other")" ] ||
+    die "unexpected boot partition device"
+
+payload=${RAUC_BUNDLE_MOUNT_POINT:?}/boot.tar
+[ "${RAUC_IMAGE_NAME:-}" = "$payload" ] || die "unexpected boot image name"
+[ -f "$payload" ] && [ ! -L "$payload" ] || die "invalid boot archive"
+payload_size=$(stat -c %s "$payload")
+[ "$payload_size" -gt 0 ] && [ "$payload_size" = "${RAUC_IMAGE_SIZE:-}" ] ||
+    die "boot archive size does not match the signed manifest"
+actual_digest=$(sha256sum "$payload") || die "cannot read the boot archive digest"
+[ "${actual_digest%% *}" = "${RAUC_IMAGE_DIGEST:-}" ] ||
+    die "boot archive digest does not match the signed manifest"
+
+archive_members=$(tar -tf "$payload") || die "cannot list the signed boot archive"
+[ "$archive_members" = "naos-q900-a.efi
+naos-q900-b.efi" ] || die "unexpected members in the signed boot archive"
+
+umask 077
+work=$(mktemp -d /run/naos/q900-ota.XXXXXX) || die "cannot stage the new UKI"
+trap 'rm -rf "$work"' EXIT
+trap 'exit 1' HUP INT TERM
+uki="$work/$member"
+tar -xOf "$payload" "$member" >"$uki" && [ -s "$uki" ] || die "cannot extract the target UKI"
+/usr/lib/naos/q900-boot install-uki "$target" "$uki"

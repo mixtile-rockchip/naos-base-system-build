@@ -1,0 +1,25 @@
+From: NAOS maintainers <naos@localhost>
+Subject: [PATCH] Continue DTB search when libfdt returns a null property
+
+The native Yocto pylibfdt binding can raise TypeError instead of
+FdtException when getprop tries to convert a null value into a bytearray.
+Handle this at the property lookup so the search continues into child
+nodes.
+
+Upstream-Status: Pending
+---
+ src/qcom_capsule_tool/patch_capsule_cert.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/qcom_capsule_tool/patch_capsule_cert.py b/src/qcom_capsule_tool/patch_capsule_cert.py
+--- a/src/qcom_capsule_tool/patch_capsule_cert.py
++++ b/src/qcom_capsule_tool/patch_capsule_cert.py
+@@ -262,7 +262,7 @@ def _find_cert_node(
+         try:
+             fdt.getprop(node_off, prop_name)
+             return path
+-        except libfdt.FdtException:
++        except (libfdt.FdtException, TypeError):
+             pass
+         child = _fdt_first_subnode(fdt, node_off)
+         while child >= 0:

@@ -12,22 +12,32 @@ case "$disk" in /dev/*) ;; *) exit 1 ;; esac
 case "$slot" in A) system_label=system_a ;; B) system_label=system_b ;; *) exit 1 ;; esac
 cmd_slot=
 cmd_rauc_slot=
+cmd_board=
 slot_seen=0
 rauc_slot_seen=0
+board_seen=0
 set -f
 for arg in $(cat /proc/cmdline); do
     case "$arg" in
         naos.slot=*) [ "$slot_seen" -eq 0 ]; slot_seen=1; cmd_slot=${arg#naos.slot=} ;;
         rauc.slot=*) [ "$rauc_slot_seen" -eq 0 ]; rauc_slot_seen=1; cmd_rauc_slot=${arg#rauc.slot=} ;;
+        naos.board=*) [ "$board_seen" -eq 0 ]; board_seen=1; cmd_board=${arg#naos.board=} ;;
     esac
 done
 set +f
-[ "$slot" = "$cmd_slot" ] && [ "$slot" = "$cmd_rauc_slot" ]
-naos_bind_disk_parts "$disk"
+[ "$slot" = "$cmd_slot" ] && [ "$slot" = "$cmd_rauc_slot" ] || exit 1
+if [ "$board_seen" -eq 1 ]; then
+    [ "$cmd_board" = radxa-airbox-q900 ]
+    IFS= read -r board </run/naos/board
+    [ "$board" = "$cmd_board" ]
+else
+    [ ! -e /run/naos/board ]
+fi
+naos_bind_disk_parts "$disk" "$cmd_board"
 IFS= read -r system </run/naos/system-device
 [ "$(readlink -f "/dev/naos/$system_label")" = "$system" ]
 lower_source=$(awk '$2 == "/run/naos/lower" && $3 == "squashfs" { print $1 }' /proc/mounts)
-[ -n "$lower_source" ] && [ "$(readlink -f "$lower_source")" = "$system" ]
+[ -n "$lower_source" ] && [ "$(readlink -f "$lower_source")" = "$system" ] || exit 1
 for data_mount in /run/naos/data /userdata; do
     userdata_source=$(awk -v point="$data_mount" '$5 == point && $4 == "/" && $6 ~ /(^|,)rw(,|$)/ {
         for (i = 6; i <= NF; i++)

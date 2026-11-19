@@ -67,10 +67,74 @@ naos_find_partition() {
     printf '%s\n' "$naos_found"
 }
 
+# Check the on-disk GPT against the kernel's view before binding a Q900 disk.
+# Both partx and sysfs report extents in 512-byte units on 4Kn media.
+naos_q900_partitions() (
+    q900_disk=$(readlink -f "$1") || exit 1
+    [ -b "$q900_disk" ] || exit 1
+    q900_path="/sys/class/block/${q900_disk##*/}"
+    [ ! -f "$q900_path/partition" ] || exit 1
+    [ "$(cat "$q900_path/queue/logical_block_size" 2>/dev/null)" = 4096 ] || exit 1
+    q900_device=$(readlink -f "$q900_path/device") || exit 1
+    q900_address=${q900_device##*/}
+    case "$q900_address" in *:0:0:0) ;; *) exit 1 ;; esac
+    q900_host=${q900_address%%:*}
+    case "$q900_host" in ''|*[!0-9]*) exit 1 ;; esac
+    [ "$(cat "/sys/class/scsi_host/host$q900_host/proc_name" 2>/dev/null)" = ufshcd ] || exit 1
+    q900_controller=${q900_device%/*/*/*}
+    q900_driver=$(readlink -f "$q900_controller/driver") || exit 1
+    [ "${q900_driver##*/}" = ufshcd-qcom ] || exit 1
+
+    q900_table=$(partx --raw --noheadings --output NR,START,SECTORS,NAME,SCHEME "$q900_disk") || exit 1
+    q900_rows=$(printf '%s\n' "$q900_table" | awk '
+        BEGIN {
+            split("efi boot-b system_a system_b misc userdata", names)
+            split("260 260 200 200 4 32", mib)
+        }
+        NF != 5 || $1 != NR || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ ||
+            $4 != names[NR] || $5 != "gpt" { exit 1 }
+        $2 <= 0 || $2 < previous_end || $2 % 8 || $3 % 8 { exit 1 }
+        NR < 6 && $3 != mib[NR] * 2048 { exit 1 }
+        NR == 6 && $3 < mib[NR] * 2048 { exit 1 }
+        { previous_end = $2 + $3; print $1, $2, $3, $4 }
+        END { if (NR != 6) exit 1 }
+    ') || exit 1
+    while IFS=' ' read -r q900_number q900_start q900_size q900_label; do
+        q900_partition=$(naos_find_partition "$q900_disk" "$q900_label") || exit 1
+        q900_part_path="/sys/class/block/${q900_partition##*/}"
+        [ "$(cat "$q900_part_path/partition")" = "$q900_number" ] || exit 1
+        [ "$(cat "$q900_part_path/start")" = "$q900_start" ] || exit 1
+        [ "$(cat "$q900_part_path/size")" = "$q900_size" ] || exit 1
+        case "$q900_label" in
+            efi) q900_label=boot_a ;;
+            boot-b) q900_label=boot_b ;;
+        esac
+        printf '%s %s\n' "$q900_label" "$q900_partition"
+    done <<EOF
+$q900_rows
+EOF
+    naos_require_last_partition "$q900_disk" "$q900_partition"
+)
+
 naos_bind_disk_parts() {
     naos_disk=$(readlink -f "$1") || return 1
     [ -b "$naos_disk" ] || return 1
     [ ! -f "/sys/class/block/${naos_disk##*/}/partition" ] || return 1
+    case "${2:-}" in
+        radxa-airbox-q900)
+            naos_q900_parts=$(naos_q900_partitions "$naos_disk") || return 1
+            mkdir -p /dev/naos || return 1
+            while IFS=' ' read -r naos_target naos_target_dev; do
+                ln -sfn "$naos_target_dev" "/dev/naos/$naos_target" || return 1
+            done <<EOF
+$naos_q900_parts
+EOF
+            ln -sfn "$naos_disk" /dev/naos/disk
+            return
+            ;;
+        '') ;;
+        *) return 1 ;;
+    esac
     mkdir -p /dev/naos || return 1
     for naos_target in uboot boot_a boot_b system_a system_b misc userdata; do
         naos_target_dev=$(naos_find_partition "$naos_disk" "$naos_target") || return 1

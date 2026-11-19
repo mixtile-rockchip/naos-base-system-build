@@ -1,0 +1,224 @@
+#!/bin/sh
+set -eu
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export LC_ALL=C
+
+die() {
+    printf 'NAOS Q900 boot: %s\n' "$*" >&2
+    exit 1
+}
+
+uki_path() {
+    case "$1" in
+        A) printf '%s\n' /EFI/NAOS/naos-a.efi ;;
+        B) printf '%s\n' /EFI/NAOS/naos-b.efi ;;
+        *) die "invalid slot $1" ;;
+    esac
+}
+
+descriptor() {
+    printf 'title NAOS %s\nsort-key %s\nuki %s\n' "$2" "$1" "$(uki_path "$2")"
+}
+
+read_descriptor() {
+    entry=$1
+    if [ ! -e "$entry" ]; then return; fi
+    [ -f "$entry" ] && [ "$(wc -c <"$entry")" -le 128 ] || die "invalid entry ${entry##*/}"
+    contents=$(cat "$entry") || die "could not read entry ${entry##*/}"
+    case "$contents" in
+        "$(descriptor "$2" A)") printf '%s\n' A ;;
+        "$(descriptor "$2" B)") printf '%s\n' B ;;
+        *) die "invalid entry ${entry##*/}" ;;
+    esac
+}
+
+read_boot_state() {
+    confirmed=$(read_descriptor "$confirmed_file" 10-naos-confirmed) || exit 1
+    pending=$(read_descriptor "$pending_file" 00-naos-trial) || exit 1
+    tried=$(read_descriptor "$tried_file" 00-naos-trial) || exit 1
+    [ -n "$confirmed" ] || die "confirmed boot entry is missing"
+    if [ -n "$pending" ] && { [ -n "$tried" ] || [ "$pending" = "$confirmed" ]; }; then
+        die "conflicting trial boot entries"
+    fi
+    if [ "$running" != "$confirmed" ] && [ "$running" != "$tried" ]; then
+        die "running slot $running has no consumed boot trial"
+    fi
+    [ -s "$esp$(uki_path "$confirmed")" ] || die "confirmed UKI is missing"
+    if [ -n "$pending" ]; then
+        [ -s "$esp$(uki_path "$pending")" ] || die "pending UKI is missing"
+    fi
+}
+
+publish() {
+    destination=$1
+    shift
+    temporary=$(mktemp "${destination%/*}/.naos-update.XXXXXX")
+    "$@" >"$temporary"
+    sync -f "$temporary"
+    mv -f "$temporary" "$destination"
+    temporary=
+    sync -f "$destination"
+}
+
+remove_tried() {
+    if [ -n "$tried" ]; then
+        rm -f "$tried_file"
+        sync -f "$esp"
+    fi
+}
+
+require_installable() {
+    [ -f /run/naos/boot-confirmed ] && [ "$running" = "$confirmed" ] ||
+        die "confirm the running slot before installing an update"
+    [ -z "$pending" ] || die "a boot trial is already pending"
+}
+
+check_bundle() {
+    # RAUC exposes this file from its verified, read-only bundle mount. Require
+    # the file install hook so a raw boot image cannot replace the shared ESP.
+    awk '
+        /^\[image\./ {images++}
+        /^\[/ {section=$0}
+        section == "[handler]" {custom_handler=1}
+        section == "[update]" && $0 == "compatible=naos-radxa-airbox-q900-ufs-v3" {compatible=1}
+        section == "[hooks]" && $0 == "filename=q900-rauc-hook" {hook=1}
+        section == "[image.boot]" && ($0 == "hooks=install" || $0 == "hooks=install;") {boot=1}
+        section == "[image.rootfs]" && $0 == "type=raw" {rootfs=1}
+        END {exit !(images == 2 && compatible && hook && boot && rootfs && !custom_handler)}
+    ' "${RAUC_BUNDLE_MOUNT_POINT:?}/manifest.raucm" || die "bundle must contain paired Q900 UKIs and system image"
+}
+
+boot_partition() {
+    partition=$(readlink -f "$1") || die "could not resolve $1"
+    [ -b "$partition" ] || die "missing boot partition $1"
+    part_sys=$(readlink -f "/sys/class/block/${partition##*/}")
+    [ "${part_sys%/*}" = "$disk_sys" ] && [ "$(cat "$part_sys/partition")" = "$2" ] ||
+        die "$1 is not partition $2 on the boot disk"
+    uuid=$(blkid -s PARTUUID -o value "$partition" | tr '[:upper:]' '[:lower:]')
+    [ "$uuid" = "$3" ] || die "unexpected PARTUUID for $1"
+    printf '%s\n' "$partition"
+}
+
+cleanup() {
+    result=$?
+    trap - EXIT
+    if [ -n "$temporary" ]; then rm -f "$temporary" || result=1; fi
+    if [ "$recovery_mounted" = 1 ]; then umount "$recovery" || result=1; fi
+    if [ "$mounted" = 1 ]; then umount "$esp" || result=1; fi
+    exit "$result"
+}
+
+if [ "${1:-}" = --private-mount ]; then
+    shift
+else
+    # RAUC checks its raw targets for external mounts. Keep the temporary ESP
+    # mount invisible to RAUC and other processes, including status requests.
+    exec busybox unshare --mount --propagation private "$0" --private-mount "$@"
+fi
+
+[ "$(cat /run/naos/board)" = radxa-airbox-q900 ] || die "unexpected board"
+IFS= read -r running </run/naos/slot
+case "$running" in A|B) ;; *) die "invalid running slot" ;; esac
+if [ "${1:-}" = get-current ]; then
+    printf '%s\n' "$running"
+    exit 0
+fi
+
+case "${1:-check-install}" in
+    prepare|boot-state|get-primary|get-state|check-install) mode=ro ;;
+    set-primary|set-state|install-uki) mode=rw ;;
+    *) die "unknown command $1" ;;
+esac
+
+exec 9>/run/naos/q900-boot.lock
+flock -x 9
+IFS= read -r disk </run/naos/boot-device
+disk=$(readlink -f "$disk")
+[ -b "$disk" ] || die "missing boot disk"
+disk_sys=$(readlink -f "/sys/class/block/${disk##*/}")
+device=$(boot_partition /dev/naos/boot_a 1 ddd4a5ce-a240-5f12-9a4b-c48cec40c23c) || exit 1
+
+esp=/run/naos/q900-esp
+mkdir -p -m 0700 "$esp"
+mounted=0
+recovery_mounted=0
+temporary=
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+mount -t vfat -o "$mode,nosuid,nodev,noexec,umask=0077" "$device" "$esp"
+mounted=1
+confirmed_file=$esp/loader/entries/naos-confirmed.conf
+pending_file=$esp/loader/entries/naos-trial+1.conf
+tried_file=$esp/loader/entries/naos-trial+0-1.conf
+read_boot_state
+
+action=${1:-check-install}
+case "$action" in
+    get-state|set-state|set-primary|install-uki)
+        target=${2:-}
+        case "$target" in A|B) ;; *) die "invalid target slot" ;; esac
+        ;;
+esac
+
+case "$action" in
+    prepare) ;;
+    boot-state)
+        if [ "$running" = "$confirmed" ]; then printf '%s\n' primary; else printf '%s\n' trial; fi
+        ;;
+    check-install)
+        require_installable
+        check_bundle
+        ;;
+    get-primary) printf '%s\n' "${pending:-$confirmed}" ;;
+    get-state)
+        if [ "$target" = "$confirmed" ] || [ "$target" = "$pending" ]; then
+            printf '%s\n' good
+        else
+            printf '%s\n' bad
+        fi
+        ;;
+    set-state)
+        case "${3:-}" in
+            good)
+                [ "$target" = "$running" ] || die "cannot confirm a slot that did not boot"
+                if [ "$target" != "$confirmed" ]; then
+                    [ -s "$esp$(uki_path "$target")" ] || die "trial UKI is missing"
+                    publish "$confirmed_file" descriptor 10-naos-confirmed "$target"
+                fi
+                if [ "$tried" = "$target" ]; then remove_tried; fi
+                ;;
+            bad)
+                [ "$target" != "$confirmed" ] || die "cannot mark the confirmed slot bad"
+                [ -z "$pending" ] || die "a boot trial is already pending"
+                if [ "$tried" = "$target" ] && [ "$running" = "$confirmed" ]; then remove_tried; fi
+                ;;
+            *) die "invalid slot state" ;;
+        esac
+        ;;
+    set-primary)
+        require_installable
+        if [ "$target" != "$confirmed" ]; then
+            [ -s "$esp$(uki_path "$target")" ] || die "target UKI is missing"
+            remove_tried
+            publish "$pending_file" descriptor 00-naos-trial "$target"
+        fi
+        ;;
+    install-uki)
+        require_installable
+        [ "$target" != "$running" ] || die "cannot replace the running UKI"
+        case "${3:-}" in /*) source=$3 ;; *) die "UKI source must be an absolute path" ;; esac
+        [ -f "$source" ] && [ -s "$source" ] && [ "$(head -c 2 "$source")" = MZ ] ||
+            die "invalid UKI source"
+        if [ "$target" = B ]; then
+            # The recovery volume also boots system_b. Mirror its UKI before
+            # RAUC can make the shared ESP's new B entry eligible to boot.
+            recovery_device=$(boot_partition /dev/naos/boot_b 2 0501edff-86da-5808-aa6a-e2c91d329330) || exit 1
+            recovery=/run/naos/q900-recovery-esp
+            mkdir -p -m 0700 "$recovery"
+            mount -t vfat -o rw,nosuid,nodev,noexec,umask=0077 "$recovery_device" "$recovery"
+            recovery_mounted=1
+            publish "$recovery$(uki_path B)" cat "$source"
+        fi
+        publish "$esp$(uki_path "$target")" cat "$source"
+        ;;
+esac

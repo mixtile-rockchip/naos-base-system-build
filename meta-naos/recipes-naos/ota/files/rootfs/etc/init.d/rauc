@@ -18,6 +18,9 @@ depend() {
 start_pre() {
     /usr/lib/naos/prepare-slots || return 1
     [ -s /etc/rauc/keyring.pem ] || { eerror "RAUC trust certificate is missing"; return 1; }
+    if [ -r /run/naos/board ] && [ "$(cat /run/naos/board)" = radxa-airbox-q900 ]; then
+        /usr/lib/naos/q900-boot prepare || return 1
+    fi
     checkpath -d -m 0700 /var/lib/rauc
     checkpath -d -m 0755 /run/rauc
 }

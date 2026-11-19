@@ -108,7 +108,8 @@ fatal() {
     trap - EXIT
     printf '\nNAOS initramfs: %s\n' "$*" >&2
     sync
-    if [ -x /usr/lib/naos/initramfs-debug ]; then
+    # Reboot Q900 after a failed trial so the bootloader can select the confirmed slot.
+    if [ "${board:-}" != radxa-airbox-q900 ] && [ -x /usr/lib/naos/initramfs-debug ]; then
         # Keep PID 1 alive. Exiting a failed-boot shell never resumes storage
         # changes or falls through to the normal reboot policy.
         while :; do
@@ -136,9 +137,11 @@ mdev -s
 slot=
 rauc_slot=
 system_selector=
+board=
 slot_seen=0
 rauc_slot_seen=0
 system_seen=0
+board_seen=0
 debug_requested=0
 set -f
 for arg in $(cat /proc/cmdline); do
@@ -146,6 +149,7 @@ for arg in $(cat /proc/cmdline); do
         naos.slot=*) [ "$slot_seen" -eq 0 ] || fatal "duplicate naos.slot"; slot_seen=1; slot=${arg#naos.slot=} ;;
         rauc.slot=*) [ "$rauc_slot_seen" -eq 0 ] || fatal "duplicate rauc.slot"; rauc_slot_seen=1; rauc_slot=${arg#rauc.slot=} ;;
         naos.system=*) [ "$system_seen" -eq 0 ] || fatal "duplicate naos.system"; system_seen=1; system_selector=${arg#naos.system=} ;;
+        naos.board=*) [ "$board_seen" -eq 0 ] || fatal "duplicate naos.board"; board_seen=1; board=${arg#naos.board=} ;;
         naos.debug=1) debug_requested=1 ;;
     esac
 done
@@ -154,9 +158,15 @@ case "$slot" in A) system_label=system_a ;; B) system_label=system_b ;; *) fatal
 [ "$slot" = "$rauc_slot" ] || fatal "naos.slot and rauc.slot disagree"
 case "$system_selector" in PARTUUID=?*) system_uuid=${system_selector#PARTUUID=} ;; *) fatal "naos.system must select a PARTUUID" ;; esac
 case "$system_uuid" in *[!a-fA-F0-9-]*|'') fatal "invalid system PARTUUID" ;; esac
+if [ "$board_seen" -eq 1 ]; then
+    [ "$board" = radxa-airbox-q900 ] || fatal "unsupported naos.board"
+    if ! mount -t efivarfs efivarfs /sys/firmware/efi/efivars; then
+        printf 'NAOS: EFI variables are unavailable to Alpine\n' >&2
+    fi
+fi
 
-# Probe the exact partition selected by U-Boot, rather than whichever matching
-# GPT label happens to appear first (eMMC, SD and USB may coexist).
+# The bootloader or UKI selects an exact PARTUUID. Other disks may use the
+# same GPT labels, so always resolve the UUID before binding the boot disk.
 attempt=0
 system=
 while [ "$attempt" -lt 30 ]; do
@@ -176,7 +186,7 @@ done
 [ -n "$system" ] || fatal "selected system partition did not appear"
 [ "$(naos_partlabel "$system")" = "$system_label" ] || fatal "system PARTUUID does not match the selected slot"
 disk=$(naos_parent_disk "$system") || fatal "cannot identify the boot disk"
-naos_bind_disk_parts "$disk" || fatal "boot disk has an incomplete or unsafe NAOS layout"
+naos_bind_disk_parts "$disk" "$board" || fatal "boot disk has an incomplete or unsafe NAOS layout"
 [ "$(readlink -f "/dev/naos/$system_label")" = "$system" ] || fatal "selected system does not belong to the boot disk"
 
 mount -t squashfs -o ro "$system" /lower
@@ -223,6 +233,9 @@ if [ "$format_needed" -eq 1 ]; then
     case "$table_sectors" in ''|*[!0-9]*) fatal "invalid userdata partition size" ;; esac
     userdata_sectors=$(cat "/sys/class/block/${userdata##*/}/size")
     [ "$userdata_sectors" -eq "$table_sectors" ] || fatal "kernel userdata capacity has not caught up with GPT"
+    if [ "$board" = radxa-airbox-q900 ]; then
+        naos_q900_partitions "$disk" >/dev/null || fatal "Q900 GPT layout changed unexpectedly after userdata growth"
+    fi
     # The 32 MiB placeholder cannot hold the baseline F2FS layout.
     [ "$((userdata_sectors * 512))" -ge 67108864 ] || fatal "userdata must grow to at least 64 MiB before F2FS creation"
     # Only the all-zero pre-growth placeholder authorized this creation. Grow
@@ -276,6 +289,7 @@ mkdir -p /run/naos/lower /run/naos/data
 printf '%s\n' "$disk" >/run/naos/boot-device
 printf '%s\n' "$slot" >/run/naos/slot
 printf '%s\n' "$system" >/run/naos/system-device
+[ -z "$board" ] || printf '%s\n' "$board" >/run/naos/board
 printf '3\n' >/run/naos/recovery-version
 mount --move /lower /run/naos/lower
 mount --move /data /run/naos/data
