@@ -74,18 +74,36 @@ require_installable() {
 }
 
 check_bundle() {
+    /usr/lib/naos/prepare-slots || die "verify the running system and userdata before installing an update"
+    . /usr/lib/naos/storage.sh
+    layout=$(naos_q900_layout_compatible) || die "invalid running disk encryption profile"
+    case "$layout" in
+        *-disk-crypt) expected_system=system.img ;;
+        *) expected_system=system.squashfs ;;
+    esac
     # RAUC exposes this file from its verified, read-only bundle mount. Require
     # the file install hook so a raw boot image cannot replace the shared ESP.
-    awk '
+    awk -v layout="$layout" -v system_payload="$expected_system" '
         /^\[image\./ {images++}
         /^\[/ {section=$0}
         section == "[handler]" {custom_handler=1}
-        section == "[update]" && $0 == "compatible=naos-radxa-airbox-q900-ufs-v3" {compatible=1}
+        section == "[update]" && /^compatible=/ {
+            compatibility_keys++
+            if ($0 == "compatible=" layout) compatible=1
+        }
         section == "[hooks]" && $0 == "filename=q900-rauc-hook" {hook=1}
         section == "[image.boot]" && ($0 == "hooks=install" || $0 == "hooks=install;") {boot=1}
         section == "[image.rootfs]" && $0 == "type=raw" {rootfs=1}
-        END {exit !(images == 2 && compatible && hook && boot && rootfs && !custom_handler)}
-    ' "${RAUC_BUNDLE_MOUNT_POINT:?}/manifest.raucm" || die "bundle must contain paired Q900 UKIs and system image"
+        section == "[image.rootfs]" && /^filename=/ {
+            rootfs_files++
+            if ($0 == "filename=" system_payload) system_file=1
+        }
+        END {
+            exit !(images == 2 && compatibility_keys == 1 && compatible && hook && boot &&
+                   rootfs && rootfs_files == 1 && system_file && !custom_handler)
+        }
+    ' "${RAUC_BUNDLE_MOUNT_POINT:?}/manifest.raucm" ||
+        die "bundle must match the running Q900 encryption profile and contain paired UKIs"
 }
 
 boot_partition() {

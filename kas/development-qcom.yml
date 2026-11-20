@@ -14,6 +14,13 @@ env:
   NAOS_BUILD_ID: null
   NAOS_OTA: "0"
   NAOS_OTA_KEY_DIR: null
+  NAOS_SECURE_BOOT: "0"
+  NAOS_SECURE_BOOT_KEY_DIR: null
+  NAOS_Q900_UEFI_AUTO_ENROLL: "0"
+  NAOS_DISK_ENCRYPTION: "0"
+  NAOS_SYSTEM_ENCRYPTION: null
+  NAOS_DATA_ENCRYPTION: null
+  NAOS_SYSTEM_KEY_DIR: null
   NAOS_Q900_CAPSULE_ROOT: null
 
 repos:
@@ -58,7 +65,6 @@ local_conf_header:
     ALPINE_ROOTFS_PROCESSORS ?= "${BB_NUMBER_THREADS}"
     DL_DIR ?= "${NAOS_PROJECT_ROOT}/downloads"
     SSTATE_DIR ?= "${NAOS_PROJECT_ROOT}/sstate-cache"
-    NAOS_BUILD_MODE = "development"
     NAOS_VERSION ?= "2.0.0-dev"
     NAOS_BUILD_ID ?= "${NAOS_VERSION}"
     # The Alpine development image and its EFI startup do not need OE tests,
@@ -70,4 +76,6 @@ local_conf_header:
   naos-qcom-flash: |
     IMAGE_FSTYPES:append:pn-naos-qcom-image:radxa-airbox-q900 = " qcomflash"
     IMAGE_CLASSES:append:pn-naos-qcom-image:radxa-airbox-q900 = " naos-q900-qcomflash"
+  naos-profile: |
+    NAOS_BUILD_MODE = "development"
     NAOS_Q900_SIGN_XBL_CONFIG:radxa-airbox-q900 = "1"

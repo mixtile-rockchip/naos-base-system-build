@@ -1,0 +1,23 @@
+header:
+  version: 14
+  includes:
+    - kas/development-qcom.yml
+
+env:
+  NAOS_DISK_ENCRYPTION: "1"
+  NAOS_SSH_CA_KEY: null
+  # Sign systemd-boot and the A/B UKIs. SoC Secure Boot (PBL/XBL and
+  # QFPROM provisioning) remains unverified on Q900.
+  NAOS_SECURE_BOOT: "1"
+  # Q900 UEFI 00569 reports successful enrollment and loses PK, KEK and db on reboot.
+  # Disable automatic enrollment to avoid repeated reboots. Qualcomm CR-4701437.
+  # https://github.com/qualcomm-linux/meta-qcom/issues/2809
+  NAOS_Q900_UEFI_AUTO_ENROLL: "0"
+  # The Q900 release target does not yet assemble a product SBOM.
+  NAOS_SBOM: "0"
+
+local_conf_header:
+  naos-profile: |
+    NAOS_BUILD_MODE = "production"
+    # Use the stock XBL configuration. SecTools TEST signing is development-only.
+    NAOS_Q900_SIGN_XBL_CONFIG:radxa-airbox-q900 = "0"

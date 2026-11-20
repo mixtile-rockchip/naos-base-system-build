@@ -1,9 +1,10 @@
-SUMMARY = "Signed RAUC bundle for the Q900 slot UKIs and SquashFS system"
+SUMMARY = "Signed RAUC bundle for the Q900 slot UKIs and system image"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 inherit bundle
 require recipes-core/images/naos-bundle-signing.inc
+require naos-q900-system-payload.inc
 
 COMPATIBLE_MACHINE = "^radxa-airbox-q900$"
 
@@ -14,8 +15,8 @@ RAUC_BUNDLE_SLOTS = "rootfs boot"
 RAUC_SLOT_rootfs = "naos-qcom-image"
 RAUC_SLOT_rootfs[depends] = "naos-qcom-image:do_image_complete"
 RAUC_SLOT_rootfs[type] = "file"
-RAUC_SLOT_rootfs[file] = "naos-q900-system.squashfs"
-RAUC_SLOT_rootfs[rename] = "system.squashfs"
+RAUC_SLOT_rootfs[file] = "naos-q900-system.${NAOS_Q900_SYSTEM_IMAGE_TYPE}"
+RAUC_SLOT_rootfs[rename] = "${@bb.utils.contains('NAOS_SYSTEM_ENCRYPTION', '1', 'system.img', 'system.squashfs', d)}"
 RAUC_SLOT_rootfs[imagetype] = "raw"
 
 RAUC_SLOT_boot = "naos-q900-boot"

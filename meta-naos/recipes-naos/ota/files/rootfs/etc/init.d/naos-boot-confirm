@@ -39,9 +39,10 @@ start() {
     layout=naos-mixtile-core3588e-v2-nano-v1
     if [ -r /run/naos/board ] && [ "$(cat /run/naos/board)" = radxa-airbox-q900 ]; then
         machine=radxa-airbox-q900
-        layout=naos-radxa-airbox-q900-ufs-v3
         rm -f /run/naos/boot-confirmed || { eend 1; return 1; }
         q900_boot_state=$(/usr/lib/naos/q900-boot boot-state) || { eend 1; return 1; }
+        . /usr/lib/naos/storage.sh
+        layout=$(naos_q900_layout_compatible) || { confirmation_failed; return 1; }
     fi
 
     version=/run/naos/lower/usr/lib/naos/version.json

@@ -1,0 +1,54 @@
+Subject: [PATCH] Validate Q900 HWKM system-key records
+
+Use the Q900 keybox envelope in the same bounded misc records. The
+kernel authenticates the envelope on unseal.
+
+Upstream-Status: Inappropriate [Q900 hardware-specific records]
+
+--- a/src/naos-system-key-record.c
++++ b/src/naos-system-key-record.c
+@@ -12,12 +12,10 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include "naos-qcom-keybox.h"
+ #include "naos-system-key-record.h"
+
+ #define MISC_BYTES (4U * 1024U * 1024U)
+-#define SYSTEM_BLOB_BYTES 100U
+-#define SYSTEM_HEADER_BYTES 40U
+-#define SYSTEM_KEY_BYTES 32U
+ #define RECORD_BYTES 65536U
+ #define IMPORT_OFFSET 0x20000U
+ #define BLOB_A_OFFSET 0x50000U
+@@ -169,27 +167,13 @@
+     return -1;
+ }
+
+-static uint32_t get_le32(const unsigned char *p)
+-{
+-    return (uint32_t)p[0] | (uint32_t)p[1] << 8 |
+-           (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+-}
+-
+ static int canonical_blob_record(const unsigned char *record)
+ {
+-    static const unsigned char magic[8] = { 'N','A','O','S','S','W','0','1' };
+-    unsigned char uuid_nonzero = 0;
+     size_t i;
+-    /* The UUID remains opaque here. Only the TA authenticates its identity. */
+-    if (memcmp(record, magic, sizeof(magic)) || get_le32(record + 8) != 1 ||
+-        get_le32(record + 12) != SYSTEM_HEADER_BYTES ||
+-        get_le32(record + 32) != SYSTEM_KEY_BYTES || get_le32(record + 36) != 1)
++    if (memcmp(record, NAOS_QCOM_SYSTEM_BLOB_MAGIC,
++               sizeof(NAOS_QCOM_SYSTEM_BLOB_MAGIC) - 1))
+         return 0;
+-    for (i = 16; i < 32; i++)
+-        uuid_nonzero |= record[i];
+-    if (!uuid_nonzero)
+-        return 0;
+-    for (i = SYSTEM_BLOB_BYTES; i < RECORD_BYTES; i++) {
++    for (i = NAOS_QCOM_KEYBOX_BLOB_SIZE; i < RECORD_BYTES; i++) {
+         if (record[i])
+             return 0;
+     }

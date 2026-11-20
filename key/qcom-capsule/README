@@ -1,0 +1,18 @@
+Q900 development Capsule signing
+
+  QcFMPRoot.cer      Public DER root embedded in the XBL configuration.
+  QcFMPRoot.pub.pem  Same root certificate in PEM for Capsule generation.
+  QcFMPSub.pub.pem   Public intermediate certificate.
+  QcFMPCert.pem      Capsule signer certificate and private key.
+
+Keep the signing PEM out of source control and restrict file access. The
+development factory build reads QcFMPRoot.cer and re-signs the Gunyah XBL
+configuration in Qualcomm SecTools TEST mode. No Capsule private material is
+needed to build the factory image.
+
+For a new development setup, generate a Capsule certificate chain using the
+Qualcomm procedure and install these four files locally:
+https://github.com/qualcomm/cbsp-boot-utilities/tree/main/uefi_capsule_generation#3-working-of-the-host-signing-tool
+
+Production XBL configuration signing requires the OEM signing chain trusted
+by the target devices.

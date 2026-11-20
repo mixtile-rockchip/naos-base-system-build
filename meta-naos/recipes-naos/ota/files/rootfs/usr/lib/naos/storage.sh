@@ -116,6 +116,84 @@ EOF
     naos_require_last_partition "$q900_disk" "$q900_partition"
 )
 
+naos_q900_layout_compatible() (
+    layout_path=/run/naos/layout-compatible
+    if [ ! -e "$layout_path" ] && [ ! -L "$layout_path" ]; then
+        printf '%s\n' naos-radxa-airbox-q900-ufs-v3
+        exit 0
+    fi
+    [ -f "$layout_path" ] && [ ! -L "$layout_path" ] || exit 1
+    layout=$(cat "$layout_path") || exit 1
+    case "$layout" in
+        naos-radxa-airbox-q900-ufs-v3|naos-radxa-airbox-q900-ufs-v3-data-crypt|naos-radxa-airbox-q900-ufs-v3-disk-crypt)
+            printf '%s\n' "$layout" ;;
+        *) exit 1 ;;
+    esac
+)
+
+naos_q900_system_matches_layout() {
+    grep -q "\"layout_compatible\"[[:space:]]*:[[:space:]]*\"$2\"" "$1/usr/lib/naos/version.json"
+}
+
+naos_sys_block_for_node() (
+    node=$(readlink -f "$1") || exit 1
+    [ -b "$node" ] || exit 1
+    number=$(stat -Lc '%t:%T' "$node") || exit 1
+    case "$number" in ''|:*|*:|*[!0-9a-fA-F:]*) exit 1 ;; esac
+    major=${number%%:*}
+    minor=${number#*:}
+    case "$minor" in *:*) exit 1 ;; esac
+    sys=$(readlink -f "/sys/dev/block/$((0x$major)):$((0x$minor))") || exit 1
+    [ -d "$sys" ] && [ -r "$sys/dev" ] || exit 1
+    printf '%s\n' "$sys"
+)
+
+# Q900 keeps the raw system A/B aliases for RAUC. A mounted mapper must
+# cover exactly its selected partition with the UFS logical block size.
+naos_q900_mapper_for_raw() (
+    raw=$(naos_sys_block_for_node "$1") || exit 1
+    [ -r "$raw/partition" ] || exit 1
+    mapper=$(naos_sys_block_for_node "/dev/mapper/$2") || exit 1
+    canonical=/dev/${mapper##*/}
+    [ "$(naos_sys_block_for_node "$canonical")" = "$mapper" ] || exit 1
+    [ "$(cat "$mapper/dm/name")" = "$2" ] || exit 1
+    [ "$(cat "$mapper/ro")" = "$3" ] || exit 1
+    [ "$(cat "$mapper/queue/logical_block_size")" = 4096 ] || exit 1
+    raw_size=$(cat "$raw/size") || exit 1
+    case "$raw_size" in ''|*[!0-9]*) exit 1 ;; esac
+    [ "$raw_size" -gt 0 ] && [ "$((raw_size % 8))" -eq 0 ] || exit 1
+    [ "$(cat "$mapper/size")" = "$raw_size" ] || exit 1
+    set -- "$mapper"/slaves/*
+    [ "$#" -eq 1 ] && [ -L "$1" ] || exit 1
+    [ "$(readlink -f "$1")" = "$raw" ] || exit 1
+    printf '%s\n' "$canonical"
+)
+
+naos_system_mapper_for_raw() {
+    naos_q900_mapper_for_raw "$1" naos-system 1
+}
+
+naos_require_block_mount() (
+    sys=$(naos_sys_block_for_node "$4") || exit 1
+    dev=$(cat "$sys/dev") || exit 1
+    awk -v point="$1" -v fs="$2" -v mode="$3" -v dev="$dev" '
+        $5 == point {
+            seen++
+            if ($3 != dev || $4 != "/" || $6 !~ ("(^|,)" mode "(,|$)")) next
+            for (i = 7; i <= NF; i++) {
+                if ($i != "-") continue
+                if ($(i + 1) == fs) matched++
+                break
+            }
+        }
+        END { exit !(seen == 1 && matched == 1) }
+    ' /proc/self/mountinfo
+)
+
+naos_ensure_device_link() {
+    [ "$(readlink "$2" 2>/dev/null)" = "$1" ] || ln -sfn "$1" "$2"
+}
+
 naos_bind_disk_parts() {
     naos_disk=$(readlink -f "$1") || return 1
     [ -b "$naos_disk" ] || return 1
@@ -123,13 +201,22 @@ naos_bind_disk_parts() {
     case "${2:-}" in
         radxa-airbox-q900)
             naos_q900_parts=$(naos_q900_partitions "$naos_disk") || return 1
+            if [ "${3:-0}" = 1 ]; then
+                naos_raw_userdata=$(printf '%s\n' "$naos_q900_parts" | awk '$1 == "userdata" {print $2}')
+                naos_mapped_userdata=$(naos_q900_mapper_for_raw "$naos_raw_userdata" naos-userdata 0) ||
+                    return 1
+            fi
             mkdir -p /dev/naos || return 1
             while IFS=' ' read -r naos_target naos_target_dev; do
-                ln -sfn "$naos_target_dev" "/dev/naos/$naos_target" || return 1
+                if [ "$naos_target" = userdata ] && [ "${3:-0}" = 1 ]; then
+                    naos_ensure_device_link "$naos_target_dev" /dev/naos/userdata-raw || return 1
+                    naos_target_dev=$naos_mapped_userdata
+                fi
+                naos_ensure_device_link "$naos_target_dev" "/dev/naos/$naos_target" || return 1
             done <<EOF
 $naos_q900_parts
 EOF
-            ln -sfn "$naos_disk" /dev/naos/disk
+            naos_ensure_device_link "$naos_disk" /dev/naos/disk
             return
             ;;
         '') ;;

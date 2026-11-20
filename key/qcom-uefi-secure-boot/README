@@ -1,0 +1,57 @@
+Q900 UEFI Secure Boot keys
+========================
+
+Run these commands from the NAOS repository root on a Linux build host with
+OpenSSL and sbsigntool installed. This example creates one RSA certificate
+for lab testing and uses it for all three UEFI variables.
+
+    (
+        set -eu
+        umask 077
+        key_dir="$PWD/key/qcom-uefi-secure-boot"
+        mkdir -p "$key_dir"
+        for file in db.key db.crt PK.auth KEK.auth db.auth; do
+            if [ -e "$key_dir/$file" ] || [ -L "$key_dir/$file" ]; then
+                printf 'Signing material already exists at %s\n' "$key_dir/$file" >&2
+                exit 1
+            fi
+        done
+
+        work_dir=$(mktemp -d)
+        trap 'rm -rf -- "$work_dir"' EXIT
+        openssl req -new -x509 -newkey rsa:3072 -sha256 -nodes -days 365 \
+            -subj '/CN=NAOS Q900 UEFI development' \
+            -keyout "$work_dir/db.key" -out "$work_dir/db.crt"
+        openssl x509 -in "$work_dir/db.crt" -outform DER -out "$work_dir/db.der"
+        sbsiglist --owner "$(cat /proc/sys/kernel/random/uuid)" --type x509 \
+            --output "$work_dir/db.esl" "$work_dir/db.der"
+
+        attrs=NON_VOLATILE,BOOTSERVICE_ACCESS,RUNTIME_ACCESS,TIME_BASED_AUTHENTICATED_WRITE_ACCESS
+        for var in PK KEK db; do
+            sbvarsign --attr "$attrs" --key "$work_dir/db.key" \
+                --cert "$work_dir/db.crt" --output "$work_dir/$var.auth" \
+                "$var" "$work_dir/db.esl"
+        done
+
+        install -m 0600 "$work_dir/db.key" "$key_dir/db.key"
+        for file in db.crt PK.auth KEK.auth db.auth; do
+            install -m 0644 "$work_dir/$file" "$key_dir/$file"
+        done
+    )
+
+The build uses db.key and db.crt for signing EFI images. The factory boot
+partition carries PK.auth, KEK.auth and db.auth for enrollment. Keep db.key on
+the signing host. For separate production certificates, sign PK.auth with PK,
+KEK.auth with PK, and db.auth with KEK. Use the db signing certificate and its
+private key as db.crt and db.key.
+
+With the production build inputs configured, build the signed factory image.
+
+    kas build kas/production-qcom.yml
+
+The Q900 production profile keeps enrollment manual. Firmware 00569 reported
+successful enrollment, then returned to Setup Mode with PK, KEK and db absent
+after reboot. This can cause an automatic enrollment loop.
+
+After enrollment, power-cycle the device and verify that SecureBoot is 1,
+SetupMode is 0, and PK, KEK and db are still present.

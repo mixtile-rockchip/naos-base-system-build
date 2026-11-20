@@ -30,6 +30,24 @@ if [ "$board_seen" -eq 1 ]; then
     [ "$cmd_board" = radxa-airbox-q900 ]
     IFS= read -r board </run/naos/board
     [ "$board" = "$cmd_board" ]
+    layout=$(naos_q900_layout_compatible)
+    case "$layout" in
+        *-crypt) encrypted_userdata=1 ;;
+        *) encrypted_userdata=0 ;;
+    esac
+    naos_bind_disk_parts "$disk" "$board" "$encrypted_userdata"
+    IFS= read -r system </run/naos/system-device
+    [ "$(readlink -f "/dev/naos/$system_label")" = "$system" ]
+    system_mount=$system
+    case "$layout" in
+        *-disk-crypt) system_mount=$(naos_system_mapper_for_raw "$system") ;;
+    esac
+    naos_require_block_mount /run/naos/lower squashfs ro "$system_mount"
+    naos_q900_system_matches_layout /run/naos/lower "$layout"
+    for data_mount in /run/naos/data /userdata; do
+        naos_require_block_mount "$data_mount" f2fs rw /dev/naos/userdata
+    done
+    exit 0
 else
     [ ! -e /run/naos/board ]
 fi

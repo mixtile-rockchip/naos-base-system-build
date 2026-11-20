@@ -1,4 +1,4 @@
-IMAGE_QCOMFLASH_FS_TYPE = "squashfs"
+IMAGE_QCOMFLASH_FS_TYPE = "${NAOS_Q900_SYSTEM_IMAGE_TYPE}"
 QCOM_ESP_IMAGE = ""
 
 NAOS_Q900_FLASH_INSTRUCTIONS = "${NAOS_QCOM_LAYER_DIR}/recipes-bsp/partition/files/flash-q900-ufs.txt"
@@ -6,8 +6,16 @@ do_image_qcomflash[depends] += "naos-q900-boot:do_deploy"
 do_image_qcomflash[depends] += "${@bb.utils.contains('NAOS_Q900_SIGN_XBL_CONFIG', '1', 'naos-q900-xbl-config:do_deploy', '', d)}"
 QCOM_XBL_CONFIG = "${@bb.utils.contains('NAOS_Q900_SIGN_XBL_CONFIG', '1', d.getVar('NAOS_Q900_SIGNED_XBL_CONFIG'), d.getVar('NAOS_Q900_XBL_CONFIG'), d)}"
 do_image_qcomflash[file-checksums] += "${NAOS_Q900_FLASH_INSTRUCTIONS}:True"
+do_image_qcomflash[file-checksums] += "${@bb.utils.contains('NAOS_SYSTEM_ENCRYPTION', '1', '${NAOS_SYSTEM_KEY_DIR}/system.key:True', '', d)}"
 do_image_qcomflash[prefuncs] += "naos_q900_check_xbl_config naos_q900_check_system_partuuids"
 naos_q900_check_system_partuuids[vardeps] += "NAOS_Q900_SYSTEM_A_PARTUUID NAOS_Q900_SYSTEM_B_PARTUUID"
+
+python () {
+    if d.getVar("NAOS_SYSTEM_ENCRYPTION") == "1":
+        d.appendVarFlag("do_image_qcomflash", "subimages", " qcomflash.tar.gz")
+        # The factory archive contains the initial system-key import record.
+        d.setVar("SSTATE_SKIP_CREATION:task-image-complete", "1")
+}
 
 naos_q900_check_xbl_config() {
     if [ "${NAOS_Q900_SIGN_XBL_CONFIG}" = "1" ]; then
@@ -57,6 +65,22 @@ python naos_q900_check_system_partuuids() {
             bb.fatal(f"Q900 system_{slot.lower()} GPT PARTUUID does not match its boot image")
 }
 
+create_qcomflash_pkg:prepend() {
+    if [ "${NAOS_SYSTEM_ENCRYPTION}" = 1 ]; then
+        # The factory archive temporarily carries a plaintext import key.
+        umask 077
+        chmod 0700 "${QCOMFLASH_DIR}"
+        install -m 0600 /dev/null "${IMGDEPLOYDIR}/${IMAGE_NAME}.qcomflash.tar.gz"
+    fi
+}
+
+create_qcomflash_pkg:append() {
+    if [ "${NAOS_SYSTEM_ENCRYPTION}" = 1 ]; then
+        rm -f "${IMGDEPLOYDIR}/${IMAGE_LINK_NAME}.qcomflash"
+        rm -rf "${QCOMFLASH_DIR}"
+    fi
+}
+
 deploy_partition_files:append() {
     if [ "$1" = "${DEPLOY_DIR_IMAGE}/${QCOM_PARTITION_FILES_SUBDIR}" ] && [ "$2" = "." ]; then
         rm -f vmlinux
@@ -68,14 +92,25 @@ deploy_partition_files:append() {
             fi
         done
 
-        mv rootfs.img naos-q900-system.squashfs
-        if [ "$(stat -c %s naos-q900-system.squashfs)" -gt 209715200 ]; then
-            bbfatal "Q900 SquashFS image exceeds the 200 MiB system partition"
+        system_image="naos-q900-system.${NAOS_Q900_SYSTEM_IMAGE_TYPE}"
+        mv rootfs.img "$system_image"
+        size=$(stat -c %s "$system_image") || bbfatal "Missing Q900 system image"
+        if [ "$size" -le 0 ] || [ "$size" -gt 209715200 ]; then
+            bbfatal "Q900 system image does not fit the 200 MiB system partition"
         fi
 
-        truncate -s 4M zeros_misc.bin
+        if [ "${NAOS_SYSTEM_ENCRYPTION}" = 1 ]; then
+            "${PYTHON}" "${UNPACKDIR}/q900-system-encryption.py" \
+                --key-directory "${NAOS_SYSTEM_KEY_DIR}" \
+                --key-fingerprint "${T}/q900-system-key.sha256" \
+                factory rawprogram0.xml "$system_image" naos-q900-misc.bin
+            rm -f zeros_misc.bin
+        else
+            truncate -s 4M zeros_misc.bin
+            chmod 0644 zeros_misc.bin
+        fi
         truncate -s 32M zeros_userdata.bin
-        chmod 0644 zeros_misc.bin zeros_userdata.bin
+        chmod 0644 zeros_userdata.bin
 
         install -m 0644 "${NAOS_Q900_FLASH_INSTRUCTIONS}" .
     fi

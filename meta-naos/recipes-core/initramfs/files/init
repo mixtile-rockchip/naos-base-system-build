@@ -104,6 +104,15 @@ debug_shell() {
         /usr/lib/naos/initramfs-debug "$@"
 }
 
+naos_crypto_enabled() {
+    marker=/usr/lib/naos/$1-encryption
+    if [ ! -e "$marker" ] && [ ! -L "$marker" ]; then
+        return 1
+    fi
+    [ -f "$marker" ] && [ ! -L "$marker" ] && [ "$(cat "$marker")" = 1 ] ||
+        fatal "invalid $1 encryption feature file"
+}
+
 fatal() {
     trap - EXIT
     printf '\nNAOS initramfs: %s\n' "$*" >&2
@@ -189,8 +198,33 @@ disk=$(naos_parent_disk "$system") || fatal "cannot identify the boot disk"
 naos_bind_disk_parts "$disk" "$board" || fatal "boot disk has an incomplete or unsafe NAOS layout"
 [ "$(readlink -f "/dev/naos/$system_label")" = "$system" ] || fatal "selected system does not belong to the boot disk"
 
-mount -t squashfs -o ro "$system" /lower
+system_mount=$system
+system_encryption=0
+userdata_encryption=0
+if [ "$board" = radxa-airbox-q900 ]; then
+    layout=naos-radxa-airbox-q900-ufs-v3
+    if naos_crypto_enabled userdata; then
+        modprobe naos_qcom_keybox || fatal "cannot load the Q900 keybox module"
+        userdata_encryption=1
+        layout=$layout-data-crypt
+    fi
+    if naos_crypto_enabled system; then
+        [ "$userdata_encryption" -eq 1 ] || fatal "encrypted system requires encrypted userdata"
+        system_encryption=1
+        layout=naos-radxa-airbox-q900-ufs-v3-disk-crypt
+        . /usr/lib/naos/system-crypto.sh
+        naos_prepare_encrypted_system "$system" "$disk" "$board"
+    fi
+fi
+mount -t squashfs -o ro "$system_mount" /lower
 [ -x /lower/sbin/init ] || fatal "selected system has no init"
+if [ "$board" = radxa-airbox-q900 ]; then
+    naos_q900_system_matches_layout /lower "$layout" ||
+        fatal "Q900 system does not match this encryption profile"
+fi
+if [ "$system_encryption" -eq 1 ]; then
+    naos_system_crypto_commit
+fi
 
 userdata=$(readlink -f /dev/naos/userdata)
 naos_require_last_partition "$disk" "$userdata" || fatal "userdata is not the final non-overlapping partition"
@@ -198,6 +232,10 @@ partno=$(cat "/sys/class/block/${userdata##*/}/partition")
 if [ "$debug_requested" -eq 1 ] && [ -x /usr/lib/naos/initramfs-debug ]; then
     debug_shell break "requested before userdata probe and initialization" || true
 fi
+if [ "$userdata_encryption" -eq 1 ]; then
+    . /usr/lib/naos/userdata-crypto.sh
+    naos_prepare_encrypted_userdata "$userdata" "$disk" "$partno" "$board"
+else
 format_needed=0
 if userdata_type=$(blkid -p -D -s TYPE -o value "$userdata" 2>/dev/null); then
     probe_result=0
@@ -245,9 +283,13 @@ if [ "$format_needed" -eq 1 ]; then
     sync
     [ "$(blkid -p -D -s TYPE -o value "$userdata" 2>/dev/null)" = f2fs ] || fatal "new userdata filesystem was not recognized"
 fi
+fi
 # Existing F2FS is already initialized. A normal mount performs kernel log
 # recovery; do not run offline fsck/resize on every boot or rewrite its layout.
 mount -t f2fs -o rw,noatime "$userdata" /data
+if [ "$userdata_encryption" -eq 1 ]; then
+    naos_userdata_crypto_ready
+fi
 # Consume recovery after the ordinary userdata mount, before creating any
 # persistent overlay directories or reserve file.
 misc=$(readlink -f /dev/naos/misc) || fatal "cannot identify misc"
@@ -289,7 +331,10 @@ mkdir -p /run/naos/lower /run/naos/data
 printf '%s\n' "$disk" >/run/naos/boot-device
 printf '%s\n' "$slot" >/run/naos/slot
 printf '%s\n' "$system" >/run/naos/system-device
-[ -z "$board" ] || printf '%s\n' "$board" >/run/naos/board
+if [ "$board" = radxa-airbox-q900 ]; then
+    printf '%s\n' "$board" >/run/naos/board
+    printf '%s\n' "$layout" >/run/naos/layout-compatible
+fi
 printf '3\n' >/run/naos/recovery-version
 mount --move /lower /run/naos/lower
 mount --move /data /run/naos/data

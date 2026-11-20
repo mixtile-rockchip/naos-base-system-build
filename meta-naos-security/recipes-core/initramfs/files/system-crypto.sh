@@ -1,6 +1,6 @@
 #!/bin/sh
-# The stateless HUK CA/TA authenticates a 100-byte system-key envelope. Only
-# the sealed envelope persists in misc; all plaintext stays in private tmpfs.
+# The platform keybox authenticates the system-key envelope. Only the sealed
+# envelope persists in misc; all plaintext stays in private tmpfs.
 
 naos_system_crypto_stop_supplicant() {
     if [ -n "${naos_system_crypto_pid:-}" ]; then
@@ -100,7 +100,13 @@ naos_system_crypto_misc_check() {
     naos_system_misc_name=${naos_system_crypto_misc##*/}
     [ "$(naos_partlabel "$naos_system_crypto_misc")" = misc ] || return 1
     [ "$(naos_parent_disk "$naos_system_crypto_misc")" = "$naos_system_crypto_disk" ] || return 1
-    [ "$(cat "/sys/class/block/$naos_system_misc_name/start")" = 24576 ] || return 1
+    if [ "$naos_system_crypto_board" = radxa-airbox-q900 ]; then
+        naos_system_crypto_parts=$(naos_q900_partitions "$naos_system_crypto_disk") || return 1
+        [ "$(printf '%s\n' "$naos_system_crypto_parts" | awk '$1 == "misc" {print $2}')" = \
+            "$naos_system_crypto_misc" ] || return 1
+    else
+        [ "$(cat "/sys/class/block/$naos_system_misc_name/start")" = 24576 ] || return 1
+    fi
     [ "$(cat "/sys/class/block/$naos_system_misc_name/size")" = 8192 ]
 }
 
@@ -115,17 +121,18 @@ naos_system_crypto_probe_slot() {
         naos_system_slot_status=$?
         [ "$naos_system_slot_status" -eq 1 ] || fatal "cannot inspect the system blob slot"
     fi
-    # A slot is exactly the authenticated 100-byte envelope and a zero tail.
+    # A slot is exactly the platform's authenticated envelope and a zero tail.
     (umask 077; dd if="$naos_system_crypto_tmp/slot-$1" \
-        of="$naos_system_crypto_tmp/tail-$1" bs=100 skip=1 2>/dev/null) ||
+        of="$naos_system_crypto_tmp/tail-$1" bs="$naos_system_crypto_blob_bytes" skip=1 2>/dev/null) ||
         fatal "cannot inspect system blob padding"
-    if ! cmp -n 65436 "$naos_system_crypto_tmp/tail-$1" /dev/zero >/dev/null; then
+    if ! cmp -n "$((65536 - naos_system_crypto_blob_bytes))" \
+        "$naos_system_crypto_tmp/tail-$1" /dev/zero >/dev/null; then
         return 0
     fi
     (umask 077; dd if="$naos_system_crypto_tmp/slot-$1" \
-        of="$naos_system_crypto_tmp/blob-$1" bs=100 count=1 2>/dev/null) ||
+        of="$naos_system_crypto_tmp/blob-$1" bs="$naos_system_crypto_blob_bytes" count=1 2>/dev/null) ||
         fatal "cannot extract the system blob"
-    naos_system_crypto_private_file "$naos_system_crypto_tmp/blob-$1" 100 ||
+    naos_system_crypto_private_file "$naos_system_crypto_tmp/blob-$1" "$naos_system_crypto_blob_bytes" ||
         fatal "invalid system blob staging file"
     if naos_system_crypto_keybox unseal "$naos_system_crypto_tmp/blob-$1" "$naos_system_crypto_tmp/key-$1"; then
         naos_system_slot_hash=$(naos_system_crypto_key_hash "$naos_system_crypto_tmp/key-$1") ||
@@ -138,19 +145,20 @@ naos_system_crypto_probe_slot() {
 
 naos_system_crypto_write_slot() {
     case "$2" in 640|768) ;; *) return 1 ;; esac
-    naos_system_crypto_private_file "$naos_system_crypto_selected_blob" 100 || return 1
+    naos_system_crypto_private_file "$naos_system_crypto_selected_blob" "$naos_system_crypto_blob_bytes" || return 1
     naos_system_crypto_misc_check || return 1
     (umask 077; dd if=/dev/zero of="$naos_system_crypto_tmp/output-$1" \
         bs=512 count=128 2>/dev/null) || return 1
     dd if="$naos_system_crypto_selected_blob" of="$naos_system_crypto_tmp/output-$1" \
-        bs=100 count=1 conv=notrunc 2>/dev/null || return 1
+        bs="$naos_system_crypto_blob_bytes" count=1 conv=notrunc 2>/dev/null || return 1
     naos_system_crypto_private_file "$naos_system_crypto_tmp/output-$1" 65536 || return 1
     naos_system_crypto_misc_io write "$naos_system_crypto_misc" "blob-$1" \
         "$naos_system_crypto_tmp/output-$1" "$naos_system_crypto_tmp/slot-$1" || return 1
     naos_system_crypto_read_region "$naos_system_crypto_tmp/readback-$1" "$2" || return 1
     cmp -s "$naos_system_crypto_tmp/output-$1" "$naos_system_crypto_tmp/readback-$1" || return 1
     (umask 077; dd if="$naos_system_crypto_tmp/readback-$1" \
-        of="$naos_system_crypto_tmp/blob-readback-$1" bs=100 count=1 2>/dev/null) || return 1
+        of="$naos_system_crypto_tmp/blob-readback-$1" \
+        bs="$naos_system_crypto_blob_bytes" count=1 2>/dev/null) || return 1
     naos_system_crypto_keybox unseal "$naos_system_crypto_tmp/blob-readback-$1" \
         "$naos_system_crypto_tmp/key-readback-$1" || return 1
     [ "$(naos_system_crypto_key_hash "$naos_system_crypto_tmp/key-readback-$1")" = "$naos_system_crypto_expected_hash" ] || return 1
@@ -162,6 +170,12 @@ naos_system_crypto_write_slot() {
 naos_prepare_encrypted_system() {
     naos_system_crypto_raw=$1
     naos_system_crypto_disk=$2
+    naos_system_crypto_board=${3:-}
+    case "$naos_system_crypto_board" in
+        '') naos_system_crypto_blob_bytes=100 ;;
+        radxa-airbox-q900) naos_system_crypto_blob_bytes=136 ;;
+        *) fatal "unsupported system key provider" ;;
+    esac
     naos_system_crypto_pid=
     naos_system_crypto_tmp=
     naos_system_crypto_repair_a=0
@@ -185,11 +199,13 @@ naos_prepare_encrypted_system() {
         [ "$naos_system_cmp_status" -eq 1 ] || fatal "cannot inspect the system key import region"
         naos_system_crypto_import_pending=1
     fi
-    mkdir -p /run/naos/tee-storage
-    chmod 0700 /run/naos/tee-storage
-    (cd /run/naos/tee-storage && exec /usr/sbin/tee-supplicant /dev/teepriv0) \
-        >"$naos_system_crypto_tmp/supplicant.log" 2>&1 &
-    naos_system_crypto_pid=$!
+    if [ -z "$naos_system_crypto_board" ]; then
+        mkdir -p /run/naos/tee-storage
+        chmod 0700 /run/naos/tee-storage
+        (cd /run/naos/tee-storage && exec /usr/sbin/tee-supplicant /dev/teepriv0) \
+            >"$naos_system_crypto_tmp/supplicant.log" 2>&1 &
+        naos_system_crypto_pid=$!
+    fi
     naos_system_crypto_probe_slot a 640
     naos_system_valid_a=$naos_system_slot_valid
     naos_system_hash_a=$naos_system_slot_hash
@@ -216,7 +232,8 @@ naos_prepare_encrypted_system() {
         [ "$naos_system_crypto_import_pending" -eq 1 ] || fatal "no authenticated system blob or factory import exists"
         naos_system_crypto_import_record || fatal "system key import is invalid or does not match this signed image"
         naos_system_crypto_keybox seal "$naos_system_crypto_tmp/import.key" "$naos_system_crypto_tmp/new.blob" || fatal "hardware-backed system key sealing failed"
-        naos_system_crypto_private_file "$naos_system_crypto_tmp/new.blob" 100 || fatal "invalid sealed system blob output"
+        naos_system_crypto_private_file "$naos_system_crypto_tmp/new.blob" "$naos_system_crypto_blob_bytes" ||
+            fatal "invalid sealed system blob output"
         naos_system_crypto_keybox unseal "$naos_system_crypto_tmp/new.blob" "$naos_system_crypto_tmp/new.key" || fatal "new system blob authentication failed"
         [ "$(naos_system_crypto_key_hash "$naos_system_crypto_tmp/new.key")" = "$naos_system_crypto_expected_hash" ] || fatal "new system blob restored a different key"
         cmp -s "$naos_system_crypto_tmp/import.key" "$naos_system_crypto_tmp/new.key" || fatal "new system blob did not preserve the imported key"

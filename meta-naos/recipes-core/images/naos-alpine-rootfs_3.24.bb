@@ -8,6 +8,24 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 inherit alpine-rootfs
 require conf/distro/include/naos-alpine-base.inc
 
+NAOS_SSH_CA_KEY ?= "${NAOS_PROJECT_ROOT}/key/ssh-ca/ssh_ca_key.pub"
+OVERRIDES:append = "${@':naos-production' if d.getVar('NAOS_BUILD_MODE') == 'production' else ''}"
+ALPINE_DEFAULT_PASSWORD:naos-production = ""
+ALPINE_CONSOLE_SHELL:naos-production = "0"
+ALPINE_SSH_CA_KEY:naos-production = "${NAOS_SSH_CA_KEY}"
+
+python () {
+    from pathlib import Path
+
+    if d.getVar("NAOS_BUILD_MODE") != "production":
+        return
+    if d.getVar("ALPINE_DEFAULT_PASSWORD") or d.getVar("ALPINE_CONSOLE_SHELL") != "0":
+        bb.fatal("Production login requires disabled password and serial login")
+    ca_key = d.getVar("ALPINE_SSH_CA_KEY")
+    if not ca_key or not Path(ca_key).is_file():
+        bb.fatal("Production SSH requires NAOS_SSH_CA_KEY with a trusted user CA public key")
+}
+
 ALPINE_BRANCH = "v3.24"
 ALPINE_SEED_VERSION = "3.24.2"
 ALPINE_SEED_FILENAME = "alpine-minirootfs-${ALPINE_SEED_VERSION}-${ALPINE_ARCH}.tar.gz"

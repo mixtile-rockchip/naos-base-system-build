@@ -6,6 +6,8 @@ LIC_FILES_CHKSUM = " \
 "
 
 # Keep the SDK devkit and our CA/TA implementation in separate pinned sources.
+require conf/distro/include/naos-security-tool.inc
+
 NAOS_RK_TEE_USER_URI ?= ""
 SRC_URI = "${@d.getVar('NAOS_RK_TEE_USER_URI') + ';name=tee;destsuffix=rk-tee-user' if d.getVar('NAOS_RK_TEE_USER_URI') else ''} \
     ${NAOS_SECURITY_TOOL_URI};name=tools;destsuffix=security-tool \

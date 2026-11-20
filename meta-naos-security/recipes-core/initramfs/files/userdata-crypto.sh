@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sourced by /init only when userdata encryption is explicitly enabled.
-# Trusted-key reads export only the TEE-sealed blob. dm-crypt obtains the
-# 64-byte AES-XTS key directly from the kernel trusted-key payload.
+# Userspace persists the sealed blob. dm-crypt obtains the 64-byte AES-XTS
+# key directly from the platform's kernel keyring.
 
 naos_userdata_crypto_sectors() {
     naos_crypto_sectors=$(cat "/sys/class/block/${naos_crypto_raw##*/}/size") ||
@@ -26,15 +26,39 @@ naos_userdata_crypto_capacity() {
         fatal "encrypted userdata requires at least 64 MiB"
 }
 
+naos_userdata_crypto_check_q900() {
+    naos_crypto_parts=$(naos_q900_partitions "$naos_crypto_disk") ||
+        fatal "invalid Q900 GPT for encrypted userdata"
+    [ "$(printf '%s\n' "$naos_crypto_parts" | awk '$1 == "userdata" {print $2}')" = \
+        "$naos_crypto_raw" ] || fatal "encrypted userdata does not match the Q900 GPT"
+    [ "$(printf '%s\n' "$naos_crypto_parts" | awk '$1 == "misc" {print $2}')" = \
+        "$naos_userdata_crypto_misc" ] || fatal "userdata key metadata does not match the Q900 GPT"
+}
+
+naos_userdata_crypto_key() {
+    if [ "$naos_crypto_key_type" = logon ]; then
+        /usr/bin/keybox_app "userdata-$1" "$naos_crypto_desc" "$naos_crypto_blob"
+    elif [ "$1" = generate ]; then
+        keyctl add trusted "$naos_crypto_desc" 'new 64' @u
+    else
+        naos_crypto_load=$(cat "$naos_crypto_blob") || return 1
+        keyctl add trusted "$naos_crypto_desc" "load $naos_crypto_load" @u
+    fi
+}
+
 naos_prepare_encrypted_userdata() {
     naos_crypto_raw=$1
     naos_crypto_disk=$2
     naos_crypto_partno=$3
+    naos_crypto_board=${4:-}
     naos_userdata_crypto_pending=0
     [ -b "$naos_crypto_raw" ] || fatal "raw userdata is not a block device"
     naos_userdata_crypto_misc=$(readlink -f /dev/naos/misc) ||
         fatal "cannot identify userdata key metadata partition"
     [ -b "$naos_userdata_crypto_misc" ] || fatal "misc is not a block device"
+    if [ "$naos_crypto_board" = radxa-airbox-q900 ]; then
+        naos_userdata_crypto_check_q900
+    fi
     ln -snf "$naos_crypto_raw" /dev/naos/userdata-raw
 
     naos_crypto_state=$(naos-data-key status --device "$naos_userdata_crypto_misc") ||
@@ -62,31 +86,35 @@ naos_prepare_encrypted_userdata() {
     case "$naos_crypto_uuid" in
         ''|*[!a-fA-F0-9-]*) fatal "invalid userdata trusted-key description" ;;
     esac
+    naos_crypto_key_type=trusted
     naos_crypto_desc=naos-userdata-$naos_crypto_uuid
+    if [ "$naos_crypto_board" = radxa-airbox-q900 ]; then
+        naos_crypto_key_type=logon
+        naos_crypto_desc=naos:userdata-$naos_crypto_uuid
+    fi
     naos_crypto_tmp=$(umask 077; mktemp -d /run/naos-userdata-key.XXXXXX) ||
         fatal "cannot create private userdata blob staging directory"
     naos_crypto_blob=$naos_crypto_tmp/sealed.hex
 
     if [ "$naos_crypto_state" = empty ]; then
-        naos_crypto_key=$(keyctl add trusted "$naos_crypto_desc" 'new 64' @u) ||
-            fatal "TEE trusted-key generation failed"
+        naos_crypto_key=$(naos_userdata_crypto_key generate) ||
+            fatal "userdata key generation failed"
     else
         naos-data-key export --device "$naos_userdata_crypto_misc" --output "$naos_crypto_blob" ||
             fatal "cannot export the sealed userdata key blob"
         [ -s "$naos_crypto_blob" ] || fatal "userdata key blob is empty"
-        # The payload passed to keyctl is the sealed blob, never plaintext.
-        naos_crypto_load=$(cat "$naos_crypto_blob") || fatal "cannot read the sealed userdata key blob"
-        naos_crypto_key=$(keyctl add trusted "$naos_crypto_desc" "load $naos_crypto_load" @u) ||
-            fatal "TEE userdata key unsealing failed"
-        unset naos_crypto_load
+        naos_crypto_key=$(naos_userdata_crypto_key load) ||
+            fatal "userdata key unsealing failed"
     fi
     case "$naos_crypto_key" in
-        ''|*[!0-9]*) fatal "trusted-key creation returned an invalid key identifier" ;;
+        ''|*[!0-9]*) fatal "userdata key creation returned an invalid key identifier" ;;
     esac
-    [ "$naos_crypto_key" -gt 0 ] || fatal "trusted-key creation returned an invalid key identifier"
+    [ "$naos_crypto_key" -gt 0 ] || fatal "userdata key creation returned an invalid key identifier"
     if [ "$naos_crypto_state" = empty ]; then
-        (umask 077; keyctl pipe "$naos_crypto_key" >"$naos_crypto_blob") ||
-            fatal "cannot export the newly sealed userdata key blob"
+        if [ "$naos_crypto_key_type" = trusted ]; then
+            (umask 077; keyctl pipe "$naos_crypto_key" >"$naos_crypto_blob") ||
+                fatal "cannot export the newly sealed userdata key blob"
+        fi
         [ -s "$naos_crypto_blob" ] || fatal "new userdata key blob is empty"
         # Persist the only key before changing the GPT or writing ciphertext.
         # Otherwise a power loss after growth could expose old nonzero free
@@ -112,13 +140,16 @@ naos_prepare_encrypted_userdata() {
                 fatal "encrypted userdata partition growth failed"
             fi
         fi
+        if [ "$naos_crypto_board" = radxa-airbox-q900 ]; then
+            naos_userdata_crypto_check_q900
+        fi
     fi
     naos_userdata_crypto_capacity
 
     # Do not discard: the cipher mapping must not expose raw key bytes or
     # forward trim to the underlying userdata partition.
     dmsetup --noudevsync create naos-userdata --table \
-        "0 $naos_crypto_sectors crypt capi:xts(aes)-plain64 :64:trusted:$naos_crypto_desc 0 $naos_crypto_raw 0" ||
+        "0 $naos_crypto_sectors crypt capi:xts(aes)-plain64 :64:$naos_crypto_key_type:$naos_crypto_desc 0 $naos_crypto_raw 0" ||
         fatal "cannot create encrypted userdata mapping"
     dmsetup --noudevsync mknodes naos-userdata || fatal "cannot create userdata mapper device node"
     # mknodes may create a block-special node rather than a symlink. Resolve
@@ -141,6 +172,10 @@ naos_prepare_encrypted_userdata() {
     [ -b "$userdata" ] || fatal "encrypted userdata mapping did not appear"
     [ "$(stat -Lc '%t:%T' "$userdata")" = "$naos_crypto_rdev" ] ||
         fatal "encrypted userdata device numbers disagree"
+    if [ "$naos_crypto_board" = radxa-airbox-q900 ]; then
+        [ "$userdata" = "$(naos_q900_mapper_for_raw "$naos_crypto_raw" naos-userdata 0)" ] ||
+            fatal "userdata mapper does not match the selected Q900 partition"
+    fi
     ln -snf "$userdata" /dev/naos/userdata
 
     naos_crypto_format=0
