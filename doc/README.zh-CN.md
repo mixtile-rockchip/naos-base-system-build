@@ -8,7 +8,7 @@
 
 | 需要完成的操作 | 文档 |
 | --- | --- |
-| 无需编译，生成固件快速体验 | [镜像生成器](https://github.com/mixtile-rockchip/naos-genimage) |
+| 无需编译，生成固件快速体验 | [镜像生成器](https://github.com/mixtile-rockchip/naos-firmware-generator) |
 | 准备主机，构建开发版或量产版 | [构建说明](build.zh-CN.md) |
 | 准备 OTA、安全启动、加密与登录材料 | [密钥与证书](keys.zh-CN.md) |
 | 登录设备，配置 Core、容器业务和局域网服务 | [系统使用](runtime.zh-CN.md) |
@@ -20,6 +20,6 @@
 
 **Yocto 构建**适合修改 BSP、内核配置、基础包集或系统集成。使用根目录的两个 kas 入口，详见[构建说明](build.zh-CN.md)。
 
-**镜像生成器**无需编译系统源码，可选择已发布版本生成固件快速体验，也可定制设备树、配置和应用，详见[独立项目说明](https://github.com/mixtile-rockchip/naos-genimage)。
+**镜像生成器**无需编译系统源码，可选择已发布版本生成固件快速体验，也可定制设备树、配置和应用，详见[独立项目说明](https://github.com/mixtile-rockchip/naos-firmware-generator)。
 
 两种方式都可以生成完整固件和 RAUC 升级包。升级包的签名与设备已安装的信任证书必须匹配，量产启动密钥和系统加密密钥也必须与已有设备保持匹配。

@@ -37,8 +37,8 @@ If the command reports a permission error, check the build environment's user na
 ## Get the project
 
 ```bash
-git clone https://github.com/mixtile-rockchip/naos-yocto.git
-cd naos-yocto
+git clone https://github.com/mixtile-rockchip/naos-base-system-build.git
+cd naos-base-system-build
 ```
 
 kas fetches the build layers automatically. The BSP and security tools use pinned commits from remote Git repositories; Core and Container use release archives with fixed versions and checksums. A local vendor SDK is not required, and Core and Container do not need to be compiled in this repository.
@@ -169,4 +169,4 @@ Use `.raucb` bundles for system updates and the complete `.img` for flashing. Se
 
 ## Use a published version
 
-To generate firmware without building it yourself, select a published version in the [image generator](https://github.com/mixtile-rockchip/naos-genimage). Published artifacts are available from `https://packages.naos.ai/repository`.
+To generate firmware without building it yourself, select a published version in the [image generator](https://github.com/mixtile-rockchip/naos-firmware-generator). Published artifacts are available from `https://packages.naos.ai/repository`.

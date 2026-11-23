@@ -1,4 +1,4 @@
-# naos-yocto
+# NAOS Base System Build
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -10,7 +10,7 @@ This repository uses **Yocto Wrynose 6.0 LTS** to build system components and as
 
 ### Try NAOS without compiling
 
-Use the [NAOS image generator (naos-genimage)](https://github.com/mixtile-rockchip/naos-genimage) to select a supported board and a released version, generate firmware, and flash your device. No system source compilation is needed. See the image generator's README for instructions.
+Use the [NAOS image generator (naos-firmware-generator)](https://github.com/mixtile-rockchip/naos-firmware-generator) to select a supported board and a released version, generate firmware, and flash your device. No system source compilation is needed. See the image generator's README for instructions.
 
 ### Build from source
 
@@ -19,8 +19,8 @@ Use this repository to modify the BSP or build the system yourself.
 First [prepare the build host](doc/build.md#prepare-the-host), then clone the project as a regular user:
 
 ```bash
-git clone https://github.com/mixtile-rockchip/naos-yocto.git
-cd naos-yocto
+git clone https://github.com/mixtile-rockchip/naos-base-system-build.git
+cd naos-base-system-build
 ```
 
 Choose a board from [Supported hardware](#supported-hardware) and prepare the required [keys and certificates](doc/keys.md). The following example uses the currently supported Mixtile Core3588E:
@@ -78,7 +78,7 @@ Environment variables control secure boot, disk encryption, SBOM, and OTA genera
 
 Use this repository when changing the BSP or rebuilding system components.
 
-To customize a device tree, preinstall application APKs, or replace system configuration using released components, use the independent [image generator](https://github.com/mixtile-rockchip/naos-genimage). Supported boards and image types depend on the generator and available releases.
+To customize a device tree, preinstall application APKs, or replace system configuration using released components, use the independent [image generator](https://github.com/mixtile-rockchip/naos-firmware-generator). Supported boards and image types depend on the generator and available releases.
 
 ## Supported hardware
 

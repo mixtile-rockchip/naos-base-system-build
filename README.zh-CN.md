@@ -1,4 +1,4 @@
-# naos-yocto
+# NAOS Base System Build
 
 [English](README.md) | **简体中文**
 
@@ -10,7 +10,7 @@ NAOS 是面向嵌入式设备的通用 Linux 系统，提供容器运行、A/B �
 
 ### 无需编译，快速体验
 
-使用 [NAOS 镜像生成器（naos-genimage）](https://github.com/mixtile-rockchip/naos-genimage)，选择支持的板型和已发布版本，即可生成固件并烧录体验，无需编译系统源码。具体使用方法见镜像生成器的 README。
+使用 [NAOS 镜像生成器（naos-firmware-generator）](https://github.com/mixtile-rockchip/naos-firmware-generator)，选择支持的板型和已发布版本，即可生成固件并烧录体验，无需编译系统源码。具体使用方法见镜像生成器的 README。
 
 ### 从源码构建
 
@@ -19,8 +19,8 @@ NAOS 是面向嵌入式设备的通用 Linux 系统，提供容器运行、A/B �
 先完成[构建环境准备](doc/build.zh-CN.md#准备主机)，使用普通用户获取工程：
 
 ```bash
-git clone https://github.com/mixtile-rockchip/naos-yocto.git
-cd naos-yocto
+git clone https://github.com/mixtile-rockchip/naos-base-system-build.git
+cd naos-base-system-build
 ```
 
 从下方[支持的硬件](#支持的硬件)中选择板型，并按[密钥与证书说明](doc/keys.zh-CN.md)准备构建材料。以下以当前支持的 Mixtile Core3588E 为例：
@@ -78,7 +78,7 @@ kas build kas/production.yml
 
 需要修改 BSP 或重新构建系统时，使用本仓库。
 
-基于已发布产物定制设备树、预装应用 APK 或替换系统配置时，可使用独立的[镜像生成器](https://github.com/mixtile-rockchip/naos-genimage)。支持的板型及镜像类型以镜像生成器和已发布产物为准。
+基于已发布产物定制设备树、预装应用 APK 或替换系统配置时，可使用独立的[镜像生成器](https://github.com/mixtile-rockchip/naos-firmware-generator)。支持的板型及镜像类型以镜像生成器和已发布产物为准。
 
 ## 支持的硬件
 

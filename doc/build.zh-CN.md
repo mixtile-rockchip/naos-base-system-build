@@ -37,8 +37,8 @@ unshare --user --map-root-user --mount --ipc --pid --fork --mount-proc true
 ## 获取工程
 
 ```bash
-git clone https://github.com/mixtile-rockchip/naos-yocto.git
-cd naos-yocto
+git clone https://github.com/mixtile-rockchip/naos-base-system-build.git
+cd naos-base-system-build
 ```
 
 kas 自动获取构建层。BSP、安全工具使用远端 Git 的固定提交；Core 和 Container 使用固定版本与摘要的发布归档。构建不要求准备本地厂商 SDK，也不需要在本仓库编译 Core 或 Container。
@@ -169,4 +169,4 @@ kas build kas/development.yml
 
 ## 获取已发布版本
 
-无需自行构建时，可通过[镜像生成器](https://github.com/mixtile-rockchip/naos-genimage)选择已发布版本并生成固件。发布产物仓库为 `https://packages.naos.ai/repository`。
+无需自行构建时，可通过[镜像生成器](https://github.com/mixtile-rockchip/naos-firmware-generator)选择已发布版本并生成固件。发布产物仓库为 `https://packages.naos.ai/repository`。
