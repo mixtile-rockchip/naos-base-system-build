@@ -1,13 +1,8 @@
 SUMMARY = "Prebuilt NAOS Core local control service"
 DESCRIPTION = "Import an independently built static Core archive and install the image's service scripts and configuration."
-# The project's own source has no public license declaration. Dependencies
-# retain the notices supplied by the independent binary release archive.
-LICENSE = "CLOSED & BSD-2-Clause & BSD-3-Clause & Apache-2.0"
-LIC_FILES_CHKSUM = " \
-    file://usr/share/licenses/naos-core/godbus-dbus-LICENSE;md5=09042bd5c6c96a2b9e45ddf1bc517eed \
-    file://usr/share/licenses/naos-core/go-LICENSE;md5=7998cb338f82d15c0eff93b7004d272a \
-    file://usr/share/licenses/naos-core/go-ini-LICENSE;md5=4e2a8d8f9935d6a766a5879a77ddc24d \
-"
+# Core has no declared project license. The release distributes the dependency
+# notices and their individual license declarations in its SPDX inventory.
+LICENSE = "CLOSED"
 
 inherit deploy nopackages
 
@@ -15,9 +10,9 @@ DEPENDS = "binutils-cross-${TARGET_ARCH}"
 COMPATIBLE_HOST = "aarch64.*-linux.*"
 
 # The release supplies the binary, dependency notices and service configuration.
-# Source and Go toolchains belong to the independent Core release workflow.
-NAOS_CORE_URI ?= "https://github.com/mixtile-rockchip/naos-device-manager/releases/download/2026.11.17.1/naos-core-linux-arm64.tar.gz"
-NAOS_CORE_SHA256 ?= "78c00039a0d97b382f530dd2cb37d6d312177e1e3cff80bf4c3aea0340ae8332"
+# The release workflow builds Core for both Alpine platforms.
+NAOS_CORE_URI ?= "https://github.com/mixtile-rockchip/naos-device-manager/releases/download/2026.11.25.1/naos-core-linux-arm64.tar.gz"
+NAOS_CORE_SHA256 ?= "b77a2bdb39e2115fbc96c266a078c811f820d4e9586be2d8cace823a4715737d"
 SRC_URI = "${NAOS_CORE_URI};name=core;subdir=prebuilt"
 S = "${UNPACKDIR}/prebuilt"
 
@@ -34,6 +29,10 @@ python __anonymous() {
         bb.fatal("Remote NAOS_CORE_URI requires a fixed NAOS_CORE_SHA256")
     if expected:
         d.setVarFlag("SRC_URI", "core.sha256sum", expected)
+        if uri.startswith(("http://", "https://")):
+            # Release assets share a filename across versions. Keep each verified archive in DL_DIR.
+            filename = bb.fetch2.URI(uri).path.rsplit("/", 1)[-1]
+            d.appendVar("SRC_URI", ";downloadfilename=" + expected + "-" + filename)
 }
 
 do_configure[noexec] = "1"
@@ -66,8 +65,17 @@ python do_verify_core() {
         info = json.loads(data)
     except (OSError, ValueError) as error:
         bb.fatal("NAOS Core archive must contain valid build-info.json: %s" % error)
-    if not isinstance(info, dict) or info.get("schema_version") != 1 or info.get("goos") != "linux" or info.get("goarch") != "arm64" or info.get("cgo_enabled") != 0:
-        bb.fatal("NAOS Core archive metadata must describe static Linux ARM64 schema 1")
+    if not isinstance(info, dict):
+        bb.fatal("Invalid Core build metadata")
+    if info.get("schema_version") == 2:
+        import re
+        if (info.get("target") != "aarch64-unknown-linux-musl"
+                or not re.fullmatch("[0-9a-f]{40}", info.get("source_revision", ""))
+                or not info.get("rustc", "").startswith("rustc ")):
+            bb.fatal("Expected a Rust ARM64 musl release and source revision")
+    elif (info.get("schema_version") != 1 or info.get("goos") != "linux"
+          or info.get("goarch") != "arm64" or info.get("cgo_enabled") != 0):
+        bb.fatal("Unsupported Core build metadata")
     binary = os.path.join(source, "usr/bin/naos-core")
     with open(binary, "rb") as stream:
         actual = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -116,12 +124,8 @@ do_install() {
     install -d ${D}${sysconfdir}/runlevels/default
     ln -s ${sysconfdir}/init.d/naos-core ${D}${sysconfdir}/runlevels/default/naos-core
     ln -s ${sysconfdir}/init.d/naosd ${D}${sysconfdir}/runlevels/default/naosd
-    install -Dm0644 ${S}/usr/share/licenses/naos-core/godbus-dbus-LICENSE \
-        ${D}${datadir}/licenses/naos-core/godbus-dbus-LICENSE
-    install -Dm0644 ${S}/usr/share/licenses/naos-core/go-LICENSE \
-        ${D}${datadir}/licenses/naos-core/go-LICENSE
-    install -Dm0644 ${S}/usr/share/licenses/naos-core/go-ini-LICENSE \
-        ${D}${datadir}/licenses/naos-core/go-ini-LICENSE
+    install -d ${D}${datadir}/licenses/naos-core
+    cp -R --no-preserve=ownership ${S}/usr/share/licenses/naos-core/. ${D}${datadir}/licenses/naos-core/
     install -Dm0644 ${S}/build-info.json ${D}${datadir}/naos-core/build-info.json
     install -Dm0644 ${S}/sbom.spdx.json ${D}${datadir}/naos-core/sbom.spdx.json
 }

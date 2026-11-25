@@ -285,7 +285,8 @@ def emit_component(d):
             info = json.loads(info_path.read_text())
             result['prebuilt'] = {k:info[k] for k in (
                 'schema_version', 'binary_sha256', 'source_sha256', 'go_version',
-                'goos', 'goarch', 'cgo_enabled', 'modules') if k in info}
+                'goos', 'goarch', 'cgo_enabled', 'modules', 'rustc', 'target',
+                'source_revision', 'cargo_lock_sha256') if k in info}
             if result['payload_hashes'].get('usr/bin/naos-core') != info.get('binary_sha256'):
                 raise ValueError('Deployed Core differs from its independent build metadata')
         elif pn == 'naos-container':

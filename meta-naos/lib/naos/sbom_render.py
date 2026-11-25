@@ -620,7 +620,7 @@ def render_product(inventory: dict, components: list[dict], artifacts: dict, out
             release_notes.extend(imported["limitations"])
             release_verified_files += imported["verified_files"]
             release_components += 1
-            if recipe == "naos-core":
+            if recipe == "naos-core" and prebuilt.get("go_version"):
                 static_go_dependencies.update(imported["dependencies"])
         elif recipe == "naos-core" and prebuilt:
             binary = prebuilt.get("binary_path", "usr/bin/naos-core")
