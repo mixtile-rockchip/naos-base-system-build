@@ -11,8 +11,8 @@ COMPATIBLE_HOST = "aarch64.*-linux.*"
 
 # The release supplies the binary, dependency notices and service configuration.
 # The release workflow builds Core for both Alpine platforms.
-NAOS_CORE_URI ?= "https://github.com/mixtile-rockchip/naos-device-manager/releases/download/2026.11.25.1/naos-core-linux-arm64.tar.gz"
-NAOS_CORE_SHA256 ?= "b77a2bdb39e2115fbc96c266a078c811f820d4e9586be2d8cace823a4715737d"
+NAOS_CORE_URI ?= "https://github.com/mixtile-rockchip/naos-device-manager/releases/download/2026.11.26.1/naos-core-linux-arm64.tar.gz"
+NAOS_CORE_SHA256 ?= "4c1701fa95a6099b23b4e890daa037ad3dfa565adbca167785f83a3d82a55934"
 SRC_URI = "${NAOS_CORE_URI};name=core;subdir=prebuilt"
 S = "${UNPACKDIR}/prebuilt"
 
