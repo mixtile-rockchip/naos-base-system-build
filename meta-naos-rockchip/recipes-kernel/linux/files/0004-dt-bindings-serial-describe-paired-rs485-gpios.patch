@@ -1,0 +1,47 @@
+From 36516f8a190be56354664e1166f9fcc0a93561da Mon Sep 17 00:00:00 2001
+From: wushuqi <shuqi.wu@qq.com>
+Date: Thu, 26 Nov 2026 09:41:23 +0800
+Subject: [PATCH] dt-bindings: serial: describe external RS485 direction GPIOs
+
+Document the separate driver-enable and receiver-enable GPIOs used by
+external RS485 transceivers on DesignWare UARTs.
+
+Upstream-Status: Inappropriate [downstream board binding]
+Signed-off-by: wushuqi <shuqi.wu@qq.com>
+---
+ .../bindings/serial/snps-dw-apb-uart.yaml         | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/serial/snps-dw-apb-uart.yaml b/Documentation/devicetree/bindings/serial/snps-dw-apb-uart.yaml
+index 4cdb0dc..575ed57 100644
+--- a/Documentation/devicetree/bindings/serial/snps-dw-apb-uart.yaml
++++ b/Documentation/devicetree/bindings/serial/snps-dw-apb-uart.yaml
+@@ -91,6 +91,18 @@ properties:
+       - const: tx
+       - const: rx
+ 
++  rs485-de-gpios:
++    description: GPIO asserted to enable the external RS-485 line driver.
++    maxItems: 1
++
++  rs485-re-gpios:
++    description: |
++      Companion to rs485-de-gpios. The asserted GPIO level disables
++      the external receiver during half-duplex transmission. With
++      active-high GPIO specifiers both pins are low when receiving.
++      Both GPIOs must support access from interrupt context.
++    maxItems: 1
++
+   snps,uart-16550-compatible:
+     description: reflects the value of UART_16550_COMPATIBLE configuration
+       parameter. Define this if your UART does not implement the busy functionality.
+@@ -131,6 +143,9 @@ properties:
+       register. Define this if your serial port does not use this pin.
+     type: boolean
+ 
++dependencies:
++  rs485-re-gpios: [ rs485-de-gpios ]
++
+ required:
+   - compatible
+   - reg

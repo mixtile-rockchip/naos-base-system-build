@@ -16,6 +16,7 @@
 /container/
 /core/
 /image-generator/
+/naos-bsp/
 /security-tool/
 /naos-ota/
 /local-doc/

@@ -1,0 +1,144 @@
+From 0e0ab52bf70dc29255147b0a33a2cb1dbef6d185 Mon Sep 17 00:00:00 2001
+From: wushuqi <shuqi.wu@qq.com>
+Date: Thu, 26 Nov 2026 09:41:07 +0800
+Subject: [PATCH] serial: 8250_dw: drive paired RS485 transceiver direction
+ GPIOs
+
+Support transceivers whose DE and /RE inputs use separate SoC
+GPIOs. Use the 8250 em485 callbacks and drain timer to switch both
+lines around PIO transfers. In Rockchip programmable THRE mode the
+interrupt does not indicate an empty FIFO, so use normal THRE for
+these ports. Leave RX enabled during TX when explicitly requested.
+Keep receive mode as the idle state, including when RS485 is disabled.
+
+This adapts the paired GPIO wiring from the Mixtile 6.1 BSP to the
+6.12 DW port registration and existing UART_CAP_NOTEMT timing.
+
+Upstream-Status: Inappropriate [downstream board binding]
+Signed-off-by: wushuqi <shuqi.wu@qq.com>
+---
+ drivers/tty/serial/8250/8250.h    |  4 +-
+ drivers/tty/serial/8250/8250_dw.c | 67 ++++++++++++++++++++++++++++++-
+ 2 files changed, 68 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/tty/serial/8250/8250.h b/drivers/tty/serial/8250/8250.h
+index a843c35..a5f575b 100644
+--- a/drivers/tty/serial/8250/8250.h
++++ b/drivers/tty/serial/8250/8250.h
+@@ -95,6 +95,7 @@ struct serial8250_config {
+ #define UART_BUG_NOMSR	BIT(2)	/* UART has buggy MSR status bits (Au1x00) */
+ #define UART_BUG_THRE	BIT(3)	/* UART has buggy THRE reassertion */
+ #define UART_BUG_TXRACE	BIT(5)	/* UART Tx fails to set remote DR */
++#define UART_BUG_NO_PTIME	BIT(6)	/* RS485 needs THRE to mean FIFO empty */
+ 
+ /* Module parameters */
+ #define UART_NR	CONFIG_SERIAL_8250_NR_UARTS
+@@ -208,7 +209,8 @@ static inline bool serial8250_set_THRI(struct uart_8250_port *up)
+ 		return false;
+ 	up->ier |= UART_IER_THRI;
+ #if defined(CONFIG_ARCH_ROCKCHIP) && defined(CONFIG_NO_GKI)
+-	up->ier |= UART_IER_PTIME;
++	if (!(up->bugs & UART_BUG_NO_PTIME))
++		up->ier |= UART_IER_PTIME;
+ #endif
+ 	serial_out(up, UART_IER, up->ier);
+ 	return true;
+diff --git a/drivers/tty/serial/8250/8250_dw.c b/drivers/tty/serial/8250/8250_dw.c
+index 0c55ee9..357e836 100644
+--- a/drivers/tty/serial/8250/8250_dw.c
++++ b/drivers/tty/serial/8250/8250_dw.c
+@@ -12,6 +12,7 @@
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/device.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/io.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
+@@ -79,6 +80,8 @@ struct dw8250_data {
+ 	struct notifier_block	clk_notifier;
+ 	struct work_struct	clk_work;
+ 	struct reset_control	*rst;
++	struct gpio_desc	*rs485_de;
++	struct gpio_desc	*rs485_re;
+ 
+ 	unsigned int		skip_autocfg:1;
+ 	unsigned int		uart_16550_compatible:1;
+@@ -556,6 +559,62 @@ static void dw8250_quirks(struct uart_port *p, struct dw8250_data *data)
+ 	}
+ }
+ 
++/* DE enables the driver and /RE disables the receiver when asserted high. */
++static void dw8250_gpio_rs485_start_tx(struct uart_8250_port *up)
++{
++	struct dw8250_data *d = to_dw8250_data(up->port.private_data);
++
++	gpiod_set_value(d->rs485_re, !(up->port.rs485.flags & SER_RS485_RX_DURING_TX));
++	gpiod_set_value(d->rs485_de, 1);
++}
++
++static void dw8250_gpio_rs485_stop_tx(struct uart_8250_port *up)
++{
++	struct dw8250_data *d = to_dw8250_data(up->port.private_data);
++
++	gpiod_set_value(d->rs485_de, 0);
++	gpiod_set_value(d->rs485_re, 0);
++}
++
++static int dw8250_gpio_rs485_config(struct uart_port *p, struct ktermios *termios,
++				    struct serial_rs485 *rs485)
++{
++	int ret = serial8250_em485_config(p, termios, rs485);
++
++	if (!ret && !(rs485->flags & SER_RS485_ENABLED))
++		dw8250_gpio_rs485_stop_tx(up_to_u8250p(p));
++
++	return ret;
++}
++
++static int dw8250_setup_rs485_gpios(struct uart_8250_port *up, struct dw8250_data *d)
++{
++	struct device *dev = up->port.dev;
++
++	if (!device_property_present(dev, "rs485-re-gpios"))
++		return 0;
++
++	d->rs485_de = devm_gpiod_get(dev, "rs485-de", GPIOD_OUT_LOW);
++	if (IS_ERR(d->rs485_de))
++		return dev_err_probe(dev, PTR_ERR(d->rs485_de), "failed to get RS485 DE GPIO\n");
++	d->rs485_re = devm_gpiod_get(dev, "rs485-re", GPIOD_OUT_LOW);
++	if (IS_ERR(d->rs485_re))
++		return dev_err_probe(dev, PTR_ERR(d->rs485_re), "failed to get RS485 /RE GPIO\n");
++	if (gpiod_cansleep(d->rs485_de) || gpiod_cansleep(d->rs485_re))
++		return dev_err_probe(dev, -EINVAL, "RS485 direction GPIOs must be IRQ-safe\n");
++
++	/* The em485 stop timer relies on THRE meaning that the FIFO is empty. */
++	up->bugs |= UART_BUG_NO_PTIME;
++	up->port.rs485_config = dw8250_gpio_rs485_config;
++	up->port.rs485_supported = serial8250_em485_supported;
++	/* The direction is fixed by the GPIO wiring (legacy active-low RTS). */
++	up->port.rs485_supported.flags = SER_RS485_ENABLED | SER_RS485_RTS_AFTER_SEND |
++					 SER_RS485_RX_DURING_TX;
++	up->rs485_start_tx = dw8250_gpio_rs485_start_tx;
++	up->rs485_stop_tx = dw8250_gpio_rs485_stop_tx;
++	return 0;
++}
++
+ static void dw8250_reset_control_assert(void *data)
+ {
+ 	reset_control_assert(data);
+@@ -699,8 +758,12 @@ static int dw8250_probe(struct platform_device *pdev)
+ 	if (!data->skip_autocfg)
+ 		dw8250_setup_port(p);
+ 
+-	/* If we have a valid fifosize, try hooking up DMA */
+-	if (p->fifosize) {
++	err = dw8250_setup_rs485_gpios(up, data);
++	if (err)
++		return err;
++
++	/* GPIO direction uses the PIO TX-empty interrupt and em485 timer. */
++	if (p->fifosize && !data->rs485_de) {
+ 		data->data.dma.rxconf.src_maxburst = p->fifosize / 4;
+ 		data->data.dma.txconf.dst_maxburst = p->fifosize / 4;
+ 		up->dma = &data->data.dma;

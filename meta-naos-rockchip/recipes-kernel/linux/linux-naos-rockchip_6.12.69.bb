@@ -16,7 +16,10 @@ SRC_URI = "${NAOS_RK_KERNEL_URI};destsuffix=kernel \
            file://logo.bmp \
            file://logo_kernel.bmp \
            file://0001-bcmdhd-use-kbuild-source-directory-for-headers.patch \
-           file://0002-bcmdhd-use-relative-build-tag.patch"
+           file://0002-bcmdhd-use-relative-build-tag.patch \
+           file://0003-rockchip-system-monitor-include-extra-thermal-zones.patch \
+           file://0004-dt-bindings-serial-describe-paired-rs485-gpios.patch \
+           file://0005-serial-8250-dw-support-rs485-direction-gpios.patch"
 SRCREV = "37a8041e0edc9bb53e60994a875ffee7936f4074"
 S = "${UNPACKDIR}/kernel"
 B = "${WORKDIR}/build"
