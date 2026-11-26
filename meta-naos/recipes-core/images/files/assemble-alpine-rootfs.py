@@ -349,6 +349,8 @@ def configure_rootfs(root, target, args, serial_consoles, extra_services):
                 target.run(["/bin/chown", "-h", "0:0", relative])
                 if not source.is_symlink():
                     target.run(["/bin/chmod", oct(stat.S_IMODE(source.stat().st_mode))[2:], relative])
+    if (root / "usr/share/zoneinfo/UTC").is_file() and not os.path.lexists(root / "etc/localtime"):
+        target.run(["/bin/ln", "-s", "../usr/share/zoneinfo/UTC", "/etc/localtime"])
     # Apply login policy after product overlays. A locked ('!') ordinary
     # account is rejected by Alpine's non-PAM sshd before certificate auth.
     if args.ssh_ca_key:
